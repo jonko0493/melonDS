@@ -1667,6 +1667,9 @@ void SoftRenderer::RenderFrame()
         ClearBuffers();
         RenderPolygons(false, &RenderPolygonRAM[0], RenderNumPolygons);
     }
+
+    GPU3D::CmdFIFOCache.Copy(&GPU3D::CmdFIFOReporter);
+    GPU3D::CmdFIFOCache.Clear();
 }
 
 void SoftRenderer::RestartFrame()

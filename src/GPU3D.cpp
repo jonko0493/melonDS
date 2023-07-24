@@ -138,18 +138,10 @@ const u8 CmdNumParams[256] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-typedef union
-{
-    u64 _contents;
-    struct
-    {
-        u32 Param;
-        u8 Command;
-    };
-
-} CmdFIFOEntry;
-
+bool ReportFIFO = false;
 FIFO<CmdFIFOEntry, 256> CmdFIFO;
+FIFO<CmdFIFOEntry, 256> CmdFIFOCache;
+FIFO<CmdFIFOEntry, 256> CmdFIFOReporter;
 FIFO<CmdFIFOEntry, 4> CmdPIPE;
 
 FIFO<CmdFIFOEntry, 64> CmdStallQueue;
@@ -1834,6 +1826,8 @@ inline void VertexPipelineCmdDelayed4()
 void ExecuteCommand()
 {
     CmdFIFOEntry entry = CmdFIFORead();
+
+    CmdFIFOCache.Write(entry);
 
     //printf("FIFO: processing %02X %08X. Levels: FIFO=%d, PIPE=%d\n", entry.Command, entry.Param, CmdFIFO->Level(), CmdPIPE->Level());
 

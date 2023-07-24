@@ -22,12 +22,12 @@
 #include <array>
 #include <memory>
 
+#include "FIFO.h"
 #include "GPU.h"
 #include "Savestate.h"
 
 namespace GPU3D
 {
-
 struct Vertex
 {
     s32 Position[4];
@@ -164,6 +164,21 @@ public:
 extern int Renderer;
 extern std::unique_ptr<Renderer3D> CurrentRenderer;
 
+typedef union
+{
+    u64 _contents;
+    struct
+    {
+        u32 Param;
+        u8 Command;
+    };
+
+} CmdFIFOEntry;
+
+extern bool ReportFIFO; // when on, reports CmdFIFO to the 3D rendering viewer
+extern const u8 CmdNumParams[256];
+extern FIFO<CmdFIFOEntry, 256> CmdFIFOReporter;
+extern FIFO<CmdFIFOEntry, 256> CmdFIFOCache;
 }
 
 #include "GPU3D_Soft.h"

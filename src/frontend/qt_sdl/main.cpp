@@ -70,6 +70,7 @@
 #include "InterfaceSettingsDialog.h"
 #include "ROMInfoDialog.h"
 #include "RAMInfoDialog.h"
+#include "DebugTools/ThreeDRenderingViewerDialog.h"
 #include "TitleManagerDialog.h"
 #include "PowerManagement/PowerManagementDialog.h"
 #include "AudioInOut.h"
@@ -1534,6 +1535,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             actRAMInfo = menu->addAction("RAM search");
             connect(actRAMInfo, &QAction::triggered, this, &MainWindow::onRAMInfo);
 
+            act3dRenderingViewer = menu->addAction("View 3D Rendering");
+            connect(act3dRenderingViewer, &QAction::triggered, this, &MainWindow::on3dRenderingViewer);
+
             actTitleManager = menu->addAction("Manage DSi titles");
             connect(actTitleManager, &QAction::triggered, this, &MainWindow::onOpenTitleManager);
         }
@@ -1786,6 +1790,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     actROMInfo->setEnabled(false);
     actRAMInfo->setEnabled(false);
+    act3dRenderingViewer->setEnabled(false);
 
     actSavestateSRAMReloc->setChecked(Config::SavestateRelocSRAM);
 
@@ -2272,6 +2277,7 @@ void MainWindow::updateCartInserted(bool gba)
         actSetupCheats->setEnabled(inserted);
         actROMInfo->setEnabled(inserted);
         actRAMInfo->setEnabled(inserted);
+        act3dRenderingViewer->setEnabled(inserted);
     }
 }
 
@@ -2756,6 +2762,11 @@ void MainWindow::onROMInfo()
 void MainWindow::onRAMInfo()
 {
     RAMInfoDialog* dlg = RAMInfoDialog::openDlg(this);
+}
+
+void MainWindow::on3dRenderingViewer()
+{
+    ThreeDRenderingViewerDialog* dlg = ThreeDRenderingViewerDialog::openDlg(this, emuThread->emuIsActive());
 }
 
 void MainWindow::onOpenTitleManager()

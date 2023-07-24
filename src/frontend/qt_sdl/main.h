@@ -287,6 +287,7 @@ private slots:
     void onCheatsDialogFinished(int res);
     void onROMInfo();
     void onRAMInfo();
+    void on3dRenderingViewer();
     void onOpenTitleManager();
     void onMPNewInstance();
 
@@ -384,6 +385,7 @@ public:
     QAction* actSetupCheats;
     QAction* actROMInfo;
     QAction* actRAMInfo;
+    QAction* act3dRenderingViewer;
     QAction* actTitleManager;
     QAction* actMPNewInstance;
 
