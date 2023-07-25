@@ -140,8 +140,8 @@ const u8 CmdNumParams[256] =
 
 bool ReportFIFO = false;
 FIFO<CmdFIFOEntry, 256> CmdFIFO;
-FIFO<CmdFIFOEntry, 256> CmdFIFOCache;
-FIFO<CmdFIFOEntry, 256> CmdFIFOReporter;
+std::vector<CmdFIFOEntry> CmdFIFOCache;
+std::vector<CmdFIFOEntry> CmdFIFOReporter;
 FIFO<CmdFIFOEntry, 4> CmdPIPE;
 
 FIFO<CmdFIFOEntry, 64> CmdStallQueue;
@@ -1827,7 +1827,10 @@ void ExecuteCommand()
 {
     CmdFIFOEntry entry = CmdFIFORead();
 
-    CmdFIFOCache.Write(entry);
+    if (ReportFIFO)
+    {
+        CmdFIFOCache.push_back(entry);
+    }
 
     //printf("FIFO: processing %02X %08X. Levels: FIFO=%d, PIPE=%d\n", entry.Command, entry.Param, CmdFIFO->Level(), CmdPIPE->Level());
 
@@ -2600,6 +2603,11 @@ void VBlank()
 void VCount215()
 {
     CurrentRenderer->RenderFrame();
+    if (ReportFIFO)
+    {
+        CmdFIFOReporter = CmdFIFOCache;
+        CmdFIFOCache.clear();
+    }
 }
 
 void SetRenderXPos(u16 xpos)

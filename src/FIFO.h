@@ -86,15 +86,6 @@ public:
         return Entries[pos];
     }
 
-    void Copy(FIFO* other)
-    {
-        other->Clear();
-        for (int i = 0; i < NumOccupied; i++)
-        {
-            other->Write(Peek(i));
-        }
-    }
-
     u32 Level() { return NumOccupied; }
     bool IsEmpty() { return NumOccupied == 0; }
     bool IsFull() { return NumOccupied >= NumEntries; }

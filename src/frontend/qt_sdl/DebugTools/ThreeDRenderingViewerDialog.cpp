@@ -18,13 +18,27 @@
 
 #include <iomanip>
 #include <sstream>
+#include <vector>
+#include <QLabel>
 
 #include "GPU3D.h"
 
 #include "ThreeDRenderingViewerDialog.h"
 #include "ui_ThreeDRenderingViewerDialog.h"
 
-u32 MatrixMode;
+struct CmdAggregatedEntry
+{
+    u32* Params;
+    u8 Command;
+    
+    CmdAggregatedEntry(u8 command, u32* params)
+    {
+        Command = command;
+        Params = params;
+    }
+};
+
+std::vector<CmdAggregatedEntry> AggregatedFIFOCache;
 
 ThreeDRenderingViewerDialog* ThreeDRenderingViewerDialog::currentDlg = nullptr;
 
@@ -36,30 +50,52 @@ ThreeDRenderingViewerDialog::ThreeDRenderingViewerDialog(QWidget* parent, bool e
     update();
 }
 
-void ThreeDRenderingViewerDialog::update()
+static void writeMultiParamString(std::stringstream &str, u32* execParams, int w, int h)
+{
+    for (int i = 0; i < w * h; i++)
+    {
+        str << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << execParams[i];
+        if (i != (w * h - 1) && i % w != w - 1)
+        {
+            str << ", ";
+        }
+        else if (i != (w * h - 1) && i % w == w - 1)
+        {
+            str << " / ";
+        }
+    }
+}
+
+void ThreeDRenderingViewerDialog::updateInfo()
 {
     ui->pipelineCommandsTree->clear();
-
-    u32 numEntries = GPU3D::CmdFIFOReporter.Level();
+    
+    u32 numEntries = GPU3D::CmdFIFOReporter.size();
     QTreeWidgetItem* vertexListItem = nullptr;
+
+    u32 execParamsCount = 0;
+    u32 execParams[32];
 
     for (u32 i = 0; i < numEntries; i++)
     {
-        GPU3D::CmdFIFOEntry entry = GPU3D::CmdFIFOReporter.Peek(i);
+        GPU3D::CmdFIFOEntry entry = GPU3D::CmdFIFOReporter[i];
         std::string commandString = std::string("");
         std::stringstream paramString = std::stringstream("");
         bool createSubItem = false;
         bool endSubItem = false;
 
         u32 paramsRequiredCount = GPU3D::CmdNumParams[entry.Command];
-        // if (paramsRequiredCount <= 1)
-        // {
+        if (paramsRequiredCount <= 1)
+        {
             switch (entry.Command)
             {
+            case 0x00:
+                commandString = "NOP";
+                break;
+
             case 0x10:
-                MatrixMode = entry.Param & 3;
                 commandString = "MTX_MODE";
-                paramString << MatrixMode;
+                paramString << (entry.Param & 3);
                 break;
 
             case 0x11:
@@ -81,101 +117,80 @@ void ThreeDRenderingViewerDialog::update()
             case 0x15:
                 commandString = "MTX_IDENTITY";
                 break;
-
-            case 0x16:
-                commandString = "MTX_LOAD_4x4";
-                break;
-                
-            case 0x17:
-                commandString = "MTX_LOAD_4x3";
-                break;
-                
-            case 0x18:
-                commandString = "MTX_MULT_4x4";
-                break;
-                
-            case 0x19:
-                commandString = "MTX_MULT_4x3";
-                break;
-                
-            case 0x1A:
-                commandString = "MTX_MULT_3x3";
-                break;
-                
-            case 0x1B:
-                commandString = "MTX_SCALE";
-                break;
-                
-            case 0x1C:
-                commandString = "MTX_TRANS";
-                break;
                 
             case 0x20:
                 commandString = "COLOR";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(4) << std::hex << entry.Param;
                 break;
                 
             case 0x21:
                 commandString = "NORMAL";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(4) << std::hex << entry.Param;
                 break;
                 
             case 0x22:
                 commandString = "TEXCOORD";
-                break;
-                
-            case 0x23:
-                commandString = "VTX_16";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x24:
                 commandString = "VTX_10";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x25:
                 commandString = "VTX_XY";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x26:
                 commandString = "VTX_XZ";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x27:
                 commandString = "VTX_YZ";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x28:
                 commandString = "VTX_DIFF";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x29:
                 commandString = "POLYGON_ATTR";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x2A:
                 commandString = "TEXIMAGE_PARAM";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x2B:
-                commandString = "PLLT_BASE";
+                commandString = "PLTT_BASE";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x30:
                 commandString = "DIF_AMB";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x31:
                 commandString = "SPE_EMI";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x32:
                 commandString = "LIGHT_VECTOR";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x33:
                 commandString = "LIGHT_COLOR";
-                break;
-                
-            case 0x34:
-                commandString = "SHININESS";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x40:
@@ -194,31 +209,107 @@ void ThreeDRenderingViewerDialog::update()
                 
             case 0x60:
                 commandString = "VIEWPORT";
-                break;
-                
-            case 0x70:
-                commandString = "BOX_TEST";
-                break;
-                
-            case 0x71:
-                commandString = "POS_TEST";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
                 break;
                 
             case 0x72:
                 commandString = "VEC_TEST";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << entry.Param;
+                break;
+
+            default:
+                commandString = "Unknown Command!";
+                paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(2) << std::hex << entry.Command;
                 break;
             }
-        // }
-        // else
-        // {
+
+            AggregatedFIFOCache.push_back(CmdAggregatedEntry(entry.Command, &entry.Param));
+        }
+        else
+        {
+            execParams[execParamsCount++] = entry.Param;
             
-        // }
+            if (execParamsCount >= paramsRequiredCount)
+            {
+                execParamsCount = 0;
+
+                switch (entry.Command)
+                {
+                case 0x16:
+                    commandString = "MTX_LOAD_4x4";
+                    writeMultiParamString(paramString, execParams, 4, 4);
+                    break;
+
+                case 0x17:
+                    commandString = "MTX_LOAD_4x3";
+                    writeMultiParamString(paramString, execParams, 4, 3);                    
+                    break;
+                    
+                case 0x18:
+                    commandString = "MTX_MULT_4x4";
+                    writeMultiParamString(paramString, execParams, 4, 4);
+                    break;
+                    
+                case 0x19:
+                    commandString = "MTX_MULT_4x3";
+                    writeMultiParamString(paramString, execParams, 4, 3);
+                    break;
+                    
+                case 0x1A:
+                    commandString = "MTX_MULT_3x3";
+                    writeMultiParamString(paramString, execParams, 3, 3);
+                    break;
+                    
+                case 0x1B:
+                    commandString = "MTX_SCALE";
+                    writeMultiParamString(paramString, execParams, 3, 1);
+                    break;
+                    
+                case 0x1C:
+                    commandString = "MTX_TRANS";
+                    writeMultiParamString(paramString, execParams, 3, 1);
+                    break;
+
+                case 0x23:
+                    commandString = "VTX_16";
+                    writeMultiParamString(paramString, execParams, 2, 1);
+                    break;
+                
+                case 0x34:
+                    commandString = "SHININESS";
+                    writeMultiParamString(paramString, execParams, 2, 1);
+                    break;
+                    
+                case 0x70:
+                    commandString = "BOX_TEST";
+                    writeMultiParamString(paramString, execParams, 3, 1);
+                    break;
+                    
+                case 0x71:
+                    commandString = "POS_TEST";
+                    writeMultiParamString(paramString, execParams, 2, 1);
+                    break;
+                    
+                default:
+                    commandString = "Unknown Command!";
+                    paramString << "0x" << std::uppercase << std::setfill('0') << std::setw(2) << std::hex << entry.Command;
+                    break;
+                }
+
+                AggregatedFIFOCache.push_back(CmdAggregatedEntry(entry.Command, execParams));
+            }
+            else
+            {
+                continue;
+            }
+        }
 
         QList<QString> strings = QList<QString>();
         strings.append(QString(commandString.c_str()));
         strings.append(QString(paramString.str().c_str()));
-
+        
         QTreeWidgetItem* commandItem = new QTreeWidgetItem(QStringList(strings));
+
         if (vertexListItem == nullptr)
         {
             ui->pipelineCommandsTree->addTopLevelItem(commandItem);
@@ -239,9 +330,9 @@ void ThreeDRenderingViewerDialog::update()
     } 
 }
 
-void ThreeDRenderingViewerDialog::on_ThreeDRenderingViewerDialog_reset()
+void ThreeDRenderingViewerDialog::on_updateButton_clicked()
 {
-    update();
+    updateInfo();
 }
 
 ThreeDRenderingViewerDialog::~ThreeDRenderingViewerDialog()

@@ -6,26 +6,26 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>482</width>
-    <height>323</height>
+    <width>685</width>
+    <height>463</height>
    </rect>
   </property>
   <property name="sizePolicy">
-   <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
+   <sizepolicy hsizetype="Ignored" vsizetype="Ignored">
+    <horstretch>100</horstretch>
+    <verstretch>100</verstretch>
    </sizepolicy>
   </property>
   <property name="minimumSize">
    <size>
-    <width>482</width>
-    <height>323</height>
+    <width>0</width>
+    <height>0</height>
    </size>
   </property>
   <property name="sizeIncrement">
    <size>
-    <width>1</width>
-    <height>1</height>
+    <width>0</width>
+    <height>0</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -39,9 +39,28 @@
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
       <widget class="QGroupBox" name="groupBoxPreviews">
+       <property name="minimumSize">
+        <size>
+         <width>300</width>
+         <height>0</height>
+        </size>
+       </property>
        <property name="title">
         <string>Previews</string>
        </property>
+       <widget class="QPushButton" name="updateButton">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>20</y>
+          <width>281</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Update</string>
+        </property>
+       </widget>
       </widget>
      </item>
      <item>
@@ -52,6 +71,15 @@
        <layout class="QGridLayout" name="gridLayout_2">
         <item row="0" column="0">
          <widget class="QTreeWidget" name="pipelineCommandsTree">
+          <property name="minimumSize">
+           <size>
+            <width>500</width>
+            <height>350</height>
+           </size>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
           <property name="columnCount">
            <number>2</number>
           </property>
@@ -78,7 +106,7 @@
       <enum>Qt::Horizontal</enum>
      </property>
      <property name="standardButtons">
-      <set>QDialogButtonBox::Close|QDialogButtonBox::Reset</set>
+      <set>QDialogButtonBox::Close</set>
      </property>
     </widget>
    </item>
@@ -91,22 +119,6 @@
    <signal>rejected()</signal>
    <receiver>ThreeDRenderingViewerDialog</receiver>
    <slot>reject()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>316</x>
-     <y>260</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>286</x>
-     <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>buttonBox</sender>
-   <signal>reset()</signal>
-   <receiver>ThreeDRenderingViewerDialog</receiver>
-   <slot>reset()</slot>
    <hints>
     <hint type="sourcelabel">
      <x>316</x>

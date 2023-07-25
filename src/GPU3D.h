@@ -177,8 +177,7 @@ typedef union
 
 extern bool ReportFIFO; // when on, reports CmdFIFO to the 3D rendering viewer
 extern const u8 CmdNumParams[256];
-extern FIFO<CmdFIFOEntry, 256> CmdFIFOReporter;
-extern FIFO<CmdFIFOEntry, 256> CmdFIFOCache;
+extern std::vector<CmdFIFOEntry> CmdFIFOReporter;
 }
 
 #include "GPU3D_Soft.h"

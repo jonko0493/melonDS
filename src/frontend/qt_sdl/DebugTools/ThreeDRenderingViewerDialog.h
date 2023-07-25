@@ -55,11 +55,11 @@ signals:
 
 private slots:
     void on_ThreeDRenderingViewerDialog_rejected();
-    void on_ThreeDRenderingViewerDialog_reset();
+    void on_updateButton_clicked();
 
 private:
     Ui::ThreeDRenderingViewerDialog* ui;
-    void update();
+    void updateInfo();
 };
 
 #endif // THREEDRENDERINGPIPELINEVIEW_H
