@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>943</width>
-    <height>463</height>
+    <height>611</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -36,6 +36,63 @@
     <enum>QLayout::SetFixedSize</enum>
    </property>
    <item>
+    <widget class="QFrame" name="buttonsFrame">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout_4">
+      <property name="spacing">
+       <number>6</number>
+      </property>
+      <property name="sizeConstraint">
+       <enum>QLayout::SetDefaultConstraint</enum>
+      </property>
+      <item>
+       <widget class="QPushButton" name="updateButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Poll Current</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="stepFrameButton">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Step Frame</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="unpauseButton">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>Unpause</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
       <widget class="QGroupBox" name="groupBoxPreviews">
@@ -54,23 +111,10 @@
           <x>10</x>
           <y>20</y>
           <width>431</width>
-          <height>341</height>
+          <height>501</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="previewLayout"/>
-       </widget>
-       <widget class="QPushButton" name="updateButton">
-        <property name="geometry">
-         <rect>
-          <x>360</x>
-          <y>360</y>
-          <width>81</width>
-          <height>23</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Update</string>
-        </property>
        </widget>
       </widget>
      </item>
@@ -85,7 +129,7 @@
           <property name="minimumSize">
            <size>
             <width>500</width>
-            <height>350</height>
+            <height>500</height>
            </size>
           </property>
           <property name="wordWrap">
@@ -137,8 +181,8 @@
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>316</x>
-     <y>260</y>
+     <x>325</x>
+     <y>453</y>
     </hint>
     <hint type="destinationlabel">
      <x>286</x>

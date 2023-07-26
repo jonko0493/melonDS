@@ -15,8 +15,8 @@ public:
     ColorWidget(QWidget* parent, QColor color) : QWidget(parent)
     {
         this->color = color;
-        this->setMinimumSize(128, 128);
-        this->setMaximumSize(128, 128);
+        this->setMinimumSize(32, 32);
+        this->setMaximumSize(32, 32);
     }
     
     ~ColorWidget()
@@ -28,6 +28,7 @@ protected:
     {
         QPainter painter(this);
         painter.fillRect(rect(), this->color);
+        painter.drawRect(0, 0, this->width() - 1, this->height() - 1);
     }
 };
 
@@ -41,8 +42,8 @@ public:
     TexturePreviewer(QWidget* parent, QImage* texture) : QWidget(parent)
     {
         this->texture = texture;
-        this->setMinimumSize(texture->width(), texture->height());
-        this->setMaximumSize(texture->width(), texture->height());
+        this->setMinimumSize(texture->width() + 1, texture->height() + 1);
+        this->setMaximumSize(texture->width() + 1, texture->height() + 1);
     }
     
     ~TexturePreviewer()
@@ -54,7 +55,8 @@ protected:
     void paintEvent(QPaintEvent* event)
     {
         QPainter painter(this);
-        painter.drawImage(0, 0, this->texture[0]);
+        painter.drawImage(1, 1, this->texture[0]);
+        painter.drawRect(0, 0, this->width() - 1, this->height() - 1);
     }
 };
 

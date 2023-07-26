@@ -72,6 +72,8 @@ signals:
 private slots:
     void on_ThreeDRenderingViewerDialog_rejected();
     void on_updateButton_clicked();
+    void on_stepFrameButton_clicked();
+    void on_unpauseButton_clicked();
     void on_pipelineCommandsTree_itemSelectionChanged();
 
 private:
@@ -81,6 +83,7 @@ private:
     Ui::ThreeDRenderingViewerDialog* ui;
     void updatePipeline();
     TexturePreviewer* getTexturePreviewer(TexParam* texParam, u32 texPalAddr);
+    void addVertexGroupTexturePreview(int index);
 };
 
 #endif // THREEDRENDERINGPIPELINEVIEW_H

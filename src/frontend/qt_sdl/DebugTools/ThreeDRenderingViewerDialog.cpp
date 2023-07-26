@@ -26,9 +26,12 @@
 #include <QLabel>
 
 #include "GPU3D.h"
+#include "main.h"
 
 #include "ThreeDRenderingViewerDialog.h"
 #include "ui_ThreeDRenderingViewerDialog.h"
+
+extern EmuThread* emuThread;
 
 struct CmdAggregatedEntry
 {
@@ -313,14 +316,14 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
 
         case 7: // Direct
         {
-            texture = new QImage(texParam->Width, texParam->Height, QImage::Format_RGB555);
+            texture = new QImage(texParam->Width, texParam->Height, QImage::Format_ARGB32);
             int pixelIndex = 0;
             for (int y = 0; y < texParam->Height; y++)
             {
                 for (int x = 0; x < texParam->Width; x++)
                 {
                     u16 pixel = this->VRAMFlat_TextureCache[texParam->Vramaddr + pixelIndex++] | (this->VRAMFlat_TextureCache[texParam->Vramaddr + pixelIndex++] << 8);
-                    texture->setPixel(x, y, pixel);
+                    texture->setPixel(x, y, RGB15toQRgb(pixel));
                 }
             }
             break;
@@ -340,6 +343,43 @@ std::vector<CmdAggregatedEntry> AggregatedFIFOCache;
 QWidgetList previewWidgets = { };
 
 ThreeDRenderingViewerDialog* ThreeDRenderingViewerDialog::currentDlg = nullptr;
+
+void ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
+{
+    TexParam* texParam = nullptr;
+    u32 basePalAddr = 0x2000;
+    
+    for (int i = index - 1; i >= 0; i--)
+    {  
+        if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
+        {
+            if (AggregatedFIFOCache[i].Params[0] != 0)
+            {
+                texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
+                if (texParam->Format == 7) // RGB15
+                {
+                    break;
+                }
+            }
+        }
+        if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
+        {
+            basePalAddr = AggregatedFIFOCache[i].Params[0] & 0x1FFF;
+        }
+        
+        if (texParam != nullptr && basePalAddr < 0x2000)
+        {
+            break;
+        }
+    }
+
+    if (texParam != nullptr && (basePalAddr < 0x2000 || texParam->Format == 7))
+    {
+        TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, basePalAddr);
+        ui->previewLayout->addWidget(texturePreviewer);
+        previewWidgets.push_back(texturePreviewer);
+    }
+}
 
 void ThreeDRenderingViewerDialog::updatePipeline()
 {
@@ -598,7 +638,12 @@ void ThreeDRenderingViewerDialog::updatePipeline()
         
         QTreeWidgetItem* commandItem = new QTreeWidgetItem(QStringList(strings));
 
-        if (vertexListItem == nullptr)
+        if (entry.Command == 0x40)
+        {
+            ui->pipelineCommandsTree->addTopLevelItem(commandItem);
+            vertexListItem = nullptr;
+        }
+        else if (vertexListItem == nullptr)
         {
             ui->pipelineCommandsTree->addTopLevelItem(commandItem);
         }
@@ -623,18 +668,36 @@ ThreeDRenderingViewerDialog::ThreeDRenderingViewerDialog(QWidget* parent, bool e
     ui->setupUi(this);
     setAttribute(Qt::WA_DeleteOnClose);
     GPU3D::Report3DPipeline = true;
-    updatePipeline();
 }
 
 ThreeDRenderingViewerDialog::~ThreeDRenderingViewerDialog()
 {
     GPU3D::Report3DPipeline = false;
+    emuThread->emuUnpause();
     delete ui;
 }
 
 void ThreeDRenderingViewerDialog::on_updateButton_clicked()
 {
+    emuThread->emuPause();
     updatePipeline();
+    ui->updateButton->setDisabled(true);
+    ui->stepFrameButton->setEnabled(true);
+    ui->unpauseButton->setEnabled(true);
+}
+
+void ThreeDRenderingViewerDialog::on_stepFrameButton_clicked()
+{
+    emuThread->emuFrameStep();
+    updatePipeline();
+}
+
+void ThreeDRenderingViewerDialog::on_unpauseButton_clicked()
+{
+    emuThread->emuUnpause();
+    ui->updateButton->setEnabled(true);
+    ui->stepFrameButton->setDisabled(true);
+    ui->unpauseButton->setDisabled(true);
 }
 
 void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
@@ -657,35 +720,7 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
 
     if (selectedItems[0]->parent() != NULL) // if we're not a top-level node, we're in a poly and should draw the tex to the screen
     {
-        TexParam* texParam = nullptr;
-        u32 basePalAddr = 0x2000;
-
-        for (int i = index - 1; i >= 0; i--)
-        {  
-            if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
-            {
-                if (AggregatedFIFOCache[i].Params[0] != 0)
-                {
-                    texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
-                }
-            }
-            if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
-            {
-                basePalAddr = AggregatedFIFOCache[i].Params[0] & 0x1FFF;
-            }
-            
-            if (texParam != nullptr && basePalAddr < 0x2000)
-            {
-                break;
-            }
-        }
-
-        if (texParam != nullptr && basePalAddr < 0x2000)
-        {
-            TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, basePalAddr);
-            ui->previewLayout->addWidget(texturePreviewer);
-            previewWidgets.push_back(texturePreviewer);
-        }
+        addVertexGroupTexturePreview(index);
     }
 
     switch (AggregatedFIFOCache[index].Command)
@@ -744,7 +779,7 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
     case 0x20: // COLOR
     {
         u32 rgb15Color = AggregatedFIFOCache[index].Params[0];
-        uint colorRgb = ((rgb15Color & 0x1F) << 3) | (((rgb15Color >> 5) & 0x1F) << 11) | (((rgb15Color >> 10) & 0x1F) << 19) | 0xFF000000;
+        uint colorRgb = ((rgb15Color & 0x1F) << 19) | (((rgb15Color >> 5) & 0x1F) << 11) | (((rgb15Color >> 10) & 0x1F) << 3) | 0xFF000000;
         QColor color = QColor(QRgb(colorRgb));
 
         ColorWidget* colorWidget = new ColorWidget(this, color);
@@ -832,14 +867,24 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
             ui->previewLayout->addWidget(texParamLabel);
             previewWidgets.push_back(texParamLabel);
 
-            for (int i = index - 1; i >= 0; i--)
+            if (texParam->Format == 7) // RGB15 bitmap
             {
-                if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
+                TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, 0);
+                ui->previewLayout->addWidget(texturePreviewer);
+                previewWidgets.push_back(texturePreviewer);
+                break;
+            }
+            else
+            {
+                for (int i = index - 1; i >= 0; i--)
                 {
-                    TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[i].Params[0] & 0x1FFF);
-                    ui->previewLayout->addWidget(texturePreviewer);
-                    previewWidgets.push_back(texturePreviewer);
-                    break;
+                    if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
+                    {
+                        TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[i].Params[0] & 0x1FFF);
+                        ui->previewLayout->addWidget(texturePreviewer);
+                        previewWidgets.push_back(texturePreviewer);
+                        break;
+                    }
                 }
             }
         }
@@ -900,35 +945,7 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
 
     case 0x40: // BEGIN_VTXS
     {
-        TexParam* texParam = nullptr;
-        u32 basePalAddr = 0x2000;
-
-        for (int i = index - 1; i >= 0; i--)
-        {  
-            if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
-            {
-                if (AggregatedFIFOCache[i].Params[0] != 0)
-                {
-                    texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
-                }
-            }
-            if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
-            {
-                basePalAddr = AggregatedFIFOCache[i].Params[0] & 0x1FFF;
-            }
-            
-            if (texParam != nullptr && basePalAddr < 0x2000)
-            {
-                break;
-            }
-        }
-
-        if (texParam != nullptr && basePalAddr < 0x2000)
-        {
-            TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, basePalAddr);
-            ui->previewLayout->addWidget(texturePreviewer);
-            previewWidgets.push_back(texturePreviewer);
-        }
+        addVertexGroupTexturePreview(index);
         break;
     }
     }
