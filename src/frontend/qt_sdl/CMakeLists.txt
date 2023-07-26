@@ -14,6 +14,7 @@ set(SOURCES_QT_SDL
     InputConfig/MapButton.h
     InputConfig/resources/ds.qrc
     DebugTools/ThreeDRenderingViewerDialog.cpp
+    DebugTools/ThreeDRenderingWidgets.h
     VideoSettingsDialog.cpp
     CameraSettingsDialog.cpp
     AudioSettingsDialog.cpp

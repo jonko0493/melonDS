@@ -138,10 +138,12 @@ const u8 CmdNumParams[256] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-bool ReportFIFO = false;
-FIFO<CmdFIFOEntry, 256> CmdFIFO;
+// Reporting information, only used when the 3D rendering viewer is turned on
+bool Report3DPipeline = false;
 std::vector<CmdFIFOEntry> CmdFIFOCache;
 std::vector<CmdFIFOEntry> CmdFIFOReporter;
+
+FIFO<CmdFIFOEntry, 256> CmdFIFO;
 FIFO<CmdFIFOEntry, 4> CmdPIPE;
 
 FIFO<CmdFIFOEntry, 64> CmdStallQueue;
@@ -1827,7 +1829,7 @@ void ExecuteCommand()
 {
     CmdFIFOEntry entry = CmdFIFORead();
 
-    if (ReportFIFO)
+    if (Report3DPipeline)
     {
         CmdFIFOCache.push_back(entry);
     }
@@ -2603,7 +2605,7 @@ void VBlank()
 void VCount215()
 {
     CurrentRenderer->RenderFrame();
-    if (ReportFIFO)
+    if (Report3DPipeline)
     {
         CmdFIFOReporter = CmdFIFOCache;
         CmdFIFOCache.clear();

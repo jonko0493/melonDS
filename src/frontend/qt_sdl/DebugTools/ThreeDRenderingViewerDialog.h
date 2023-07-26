@@ -21,8 +21,24 @@
 
 #include <QDialog>
 
+#include "ThreeDRenderingWidgets.h"
+
 namespace Ui { class ThreeDRenderingViewerDialog; }
 class ThreeDRenderingViewerDialog;
+
+struct TexParam
+{
+    u32 Vramaddr;
+    s32 Width;
+    s32 Height;
+    bool WrapX;
+    bool WrapY;
+    bool FlipX;
+    bool FlipY;
+    s32 Format;
+    u32 Alpha0;
+    s32 TransformationMode;
+};
 
 class ThreeDRenderingViewerDialog : QDialog
 {
@@ -56,10 +72,15 @@ signals:
 private slots:
     void on_ThreeDRenderingViewerDialog_rejected();
     void on_updateButton_clicked();
+    void on_pipelineCommandsTree_itemSelectionChanged();
 
 private:
+    u8 VRAMFlat_TextureCache[512*1024] = { };
+    u8 VRAMFlat_TexPalCache[128*1024] = { };
+
     Ui::ThreeDRenderingViewerDialog* ui;
-    void updateInfo();
+    void updatePipeline();
+    TexturePreviewer* getTexturePreviewer(TexParam* texParam, u32 texPalAddr);
 };
 
 #endif // THREEDRENDERINGPIPELINEVIEW_H

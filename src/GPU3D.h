@@ -175,7 +175,7 @@ typedef union
 
 } CmdFIFOEntry;
 
-extern bool ReportFIFO; // when on, reports CmdFIFO to the 3D rendering viewer
+extern bool Report3DPipeline; // when on, reports various graphics stuff to the 3D rendering viewer
 extern const u8 CmdNumParams[256];
 extern std::vector<CmdFIFOEntry> CmdFIFOReporter;
 }
