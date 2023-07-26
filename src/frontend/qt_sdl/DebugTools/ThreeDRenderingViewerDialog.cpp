@@ -42,9 +42,9 @@ struct CmdAggregatedEntry
     }
 };
 
-static QRgb RGB555toQRgb(u16 colorData)
+static QRgb RGB15toQRgb(u16 colorData)
 {
-    return QRgb(((colorData & 0x1F) << 3) | (((colorData >> 5) & 0x1F) << 3) | (((colorData >> 10) & 0x1F) << 3));
+    return QRgb(((colorData & 0x1F) << 19) | (((colorData >> 5) & 0x1F) << 11) | (((colorData >> 10) & 0x1F) << 3) | 0xFF000000);
 }
 
 static void writeMultiParamString(std::stringstream &str, u32* execParams, int w, int h, bool newLine = false)
@@ -125,17 +125,18 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
             numColors = 8;
             break;
     }
+    
     for (int i = 0; i < numColors; i++)
     {
         u16 colorData = this->VRAMFlat_TexPalCache[texPalAddr + i * 2] | (this->VRAMFlat_TexPalCache[texPalAddr + i * 2 + 1] << 8);
-        palette.append(RGB555toQRgb(colorData));
+        palette.append(RGB15toQRgb(colorData));
     }
-
+    
     QImage* texture = nullptr;
 
     switch (texParam->Format)
     {
-        case 1:
+        case 1: // A3I5
         {
             texture = new QImage(texParam->Width, texParam->Height, QImage::Format_ARGB32);
             int pixelIndex = 0;
@@ -152,7 +153,7 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
             break;
         }
 
-        case 2:
+        case 2: // PAL4
         {
             texture = new QImage(texParam->Width, texParam->Height, QImage::Format_Indexed8);
             texture->setColorTable(palette);
@@ -171,7 +172,7 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
             break;
         }
 
-        case 3:
+        case 3: // PAL16
         {
             texture = new QImage(texParam->Width, texParam->Height, QImage::Format_Indexed8);
             texture->setColorTable(palette);
@@ -188,7 +189,7 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
             break;
         }
 
-        case 4:
+        case 4: // PAL256
         {
             texture = new QImage(texParam->Width, texParam->Height, QImage::Format_Indexed8);
             texture->setColorTable(palette);
@@ -203,17 +204,18 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
             break;
         }
 
-        case 5:
+        case 5: // CMPR
+        {
+            texture = new QImage(texParam->Width, texParam->Height, QImage::Format_ARGB32);
+            break;
+        }
+
+        case 6: // A5I3
         {
             break;
         }
 
-        case 6:
-        {
-            break;
-        }
-
-        case 7:
+        case 7: // Direct
         {
             texture = new QImage(texParam->Width, texParam->Height, QImage::Format_RGB555);
             int pixelIndex = 0;
@@ -625,10 +627,8 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
     case 0x2A: // TEXIMAGE_PARAM
     {
         std::stringstream str = std::stringstream("");
-        printf("Starting...\n");
         if (AggregatedFIFOCache[index].Params[0] == 0)
         {
-            printf("No texture detected.\n");       
             QLabel* texParamLabel = new QLabel("No texture.");
             ui->previewLayout->addWidget(texParamLabel);
             previewWidgets.push_back(texParamLabel);
@@ -636,7 +636,6 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
         else
         {
             TexParam* texParam = parseTexImageParam(AggregatedFIFOCache[index].Params[0]);
-            printf("Tex param parsed.\n");   
 
             str << "VRAM Address: " << texParam->Vramaddr << "\nSize: " << texParam->Width << "x" << texParam->Height << "\nType: ";
             switch (texParam->Format)
@@ -698,36 +697,51 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
                     str << "Vertex source";
                     break;
             }
-            
-            printf("Creating QLabel.\n");   
+             
             QLabel* texParamLabel = new QLabel(str.str().c_str());
             ui->previewLayout->addWidget(texParamLabel);
             previewWidgets.push_back(texParamLabel);
 
-            for (int i = index; i >= 0; i--)
+            for (int i = index - 1; i >= 0; i--)
             {
-                printf("%d - 0x%x\n", i, AggregatedFIFOCache[i].Command);   
                 if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
                 {
-                    TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[i].Params[0]);
+                    TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[i].Params[0] & 0x1FFF);
                     ui->previewLayout->addWidget(texturePreviewer);
                     previewWidgets.push_back(texturePreviewer);
                     break;
                 }
             }
         }
+        break;
     }
     
     case 0x2B: // PLTT_BASE
     {
-        for (int i = index; i >= 0; i--)
-        {
+        for (int i = index - 1; i >= 0; i--)
+        {  
             if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
             {
                 if (AggregatedFIFOCache[i].Params[0] != 0)
                 {
                     TexParam* texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
-                    TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[index].Params[0]);
+
+                    u32 palAddr = AggregatedFIFOCache[index].Params[0];
+                    if (texParam->Format == 2) // PAL4
+                    {
+                        palAddr <<= 3;
+                    }
+                    else
+                    {
+                        palAddr <<= 4;
+                    }
+                    std::stringstream str = std::stringstream("");
+                    str << "Palette Address: 0x" << std::hex << std::uppercase << palAddr;
+                    QLabel* pltBaseLabel = new QLabel(str.str().c_str());
+                    ui->previewLayout->addWidget(pltBaseLabel);
+                    previewWidgets.push_back(pltBaseLabel);
+
+                    TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[index].Params[0] & 0x1FFF);
                     ui->previewLayout->addWidget(texturePreviewer);
                     previewWidgets.push_back(texturePreviewer);
                     break;
