@@ -54,7 +54,7 @@
           <x>10</x>
           <y>20</y>
           <width>431</width>
-          <height>351</height>
+          <height>341</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="previewLayout"/>
@@ -62,8 +62,8 @@
        <widget class="QPushButton" name="updateButton">
         <property name="geometry">
          <rect>
-          <x>358</x>
-          <y>380</y>
+          <x>360</x>
+          <y>360</y>
           <width>81</width>
           <height>23</height>
          </rect>

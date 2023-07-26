@@ -115,9 +115,13 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
             break;
 
         case 4:
-        case 5:
             texPalAddr <<= 4;
             numColors = 256;
+            break;
+
+        case 5:
+            texPalAddr <<= 4;
+            // building the palette AoT for case 5 is useless with its large palette offset
             break;
 
         case 6:
@@ -182,8 +186,8 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
                 for (int x = 0; x < texParam->Width; x += 2)
                 {
                     u8 texel = this->VRAMFlat_TextureCache[texParam->Vramaddr + pixelIndex++];
-                    texture->setPixel(x, y, texel & 0x1F);
-                    texture->setPixel(x + 1, y, (texel >> 4) & 0x1F);
+                    texture->setPixel(x, y, texel & 0xF);
+                    texture->setPixel(x + 1, y, (texel >> 4) & 0xF);
                 }
             }
             break;
@@ -207,11 +211,103 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
         case 5: // CMPR
         {
             texture = new QImage(texParam->Width, texParam->Height, QImage::Format_ARGB32);
+            int pixelIndex = 0;
+            for (int y = 0; y < texParam->Height; y++)
+            {
+                QColor color = QColor(Qt::black);
+                for (int x = 0; x < texParam->Width; x++)
+                {
+                    u32 vramaddr = texParam->Vramaddr + ((y & 0x3FC) * (texParam->Width >> 2) + (x & 0x3FC)) + (y & 0x3);
+                    u32 slot1addr = 0x20000 + ((vramaddr & 0x1FFFC) >> 1);
+                    if (vramaddr >= 0x40000)
+                        slot1addr += 0x10000;
+
+                    u8 val = VRAMFlat_TextureCache[vramaddr] >> (2 * (x & 0x3));
+                    u16 palInfo = VRAMFlat_TextureCache[slot1addr] | (VRAMFlat_TextureCache[slot1addr + 1] << 8);
+                    u32 palOffset = (palInfo & 0x3FFF) << 2;
+
+                    switch (val & 0x3)
+                    {
+                    case 0:
+                        color = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 1] << 8))));
+                        break;
+
+                    case 1:
+                        color = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset + 2] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 3] << 8))));
+                        break;
+
+                    case 2:
+                        if (palInfo >> 14 == 1)
+                        {
+                            QColor color1 = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 1] << 8))));
+                            QColor color2 = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset + 2] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 3] << 8))));
+
+                            int r = (color1.red() + color2.red()) >> 1;
+                            int g = (color1.green() + color2.green()) >> 1;
+                            int b = (color1.blue() + color2.blue()) >> 1;
+
+                            color = QColor(r, g, b);
+                        }
+                        else if (palInfo >> 14 == 3)
+                        {
+                            QColor color1 = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 1] << 8))));
+                            QColor color2 = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset + 2] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 3] << 8))));
+
+                            int r = (color1.red() * 5 + color2.red() * 3) >> 3;
+                            int g = (color1.green() * 5 + color2.green() * 3) >> 3;
+                            int b = (color1.blue() * 5 + color2.blue() * 3) >> 3;
+
+                            color = QColor(r, g, b);
+                        }
+                        else
+                        {
+                            color = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset + 4] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 5] << 8))));
+                        }
+                        break;
+
+                    case 3:
+                        if (palInfo >> 14 == 2)
+                        {
+                            color = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset + 6] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 7] << 8))));
+                        }
+                        else if (palInfo >> 14 == 3)
+                        {
+                            QColor color1 = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 1] << 8))));
+                            QColor color2 = QColor(QRgb(RGB15toQRgb(VRAMFlat_TexPalCache[texPalAddr + palOffset + 2] | (VRAMFlat_TexPalCache[texPalAddr + palOffset + 3] << 8))));
+
+                            int r = (color1.red() * 3 + color2.red() * 5) >> 3;
+                            int g = (color1.green() * 3 + color2.green() * 5) >> 3;
+                            int b = (color1.blue() * 3 + color2.blue() * 5) >> 3;
+
+                            color = QColor(r, g, b);
+                        }
+                        else
+                        {
+                            color.setAlpha(0);
+                        }
+                        break;
+                    }
+
+                    texture->setPixelColor(x, y, color);
+                }
+            }
             break;
         }
 
         case 6: // A5I3
         {
+            texture = new QImage(texParam->Width, texParam->Height, QImage::Format_ARGB32);
+            int pixelIndex = 0;
+            for (int y = 0; y < texParam->Height; y++)
+            {
+                for (int x = 0; x < texParam->Width; x++)
+                {
+                    u8 pixel = this->VRAMFlat_TextureCache[texParam->Vramaddr + pixelIndex++];
+                    QColor color = QColor(palette[pixel & 0x7]);
+                    color.setAlpha(pixel >> 3);
+                    texture->setPixelColor(x, y, color);
+                }
+            }
             break;
         }
 
@@ -558,6 +654,40 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
     }
 
     int index = std::stoi(selectedItems[0]->text(0).toStdString());
+
+    if (selectedItems[0]->parent() != NULL) // if we're not a top-level node, we're in a poly and should draw the tex to the screen
+    {
+        TexParam* texParam = nullptr;
+        u32 basePalAddr = 0x2000;
+
+        for (int i = index - 1; i >= 0; i--)
+        {  
+            if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
+            {
+                if (AggregatedFIFOCache[i].Params[0] != 0)
+                {
+                    texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
+                }
+            }
+            if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
+            {
+                basePalAddr = AggregatedFIFOCache[i].Params[0] & 0x1FFF;
+            }
+            
+            if (texParam != nullptr && basePalAddr < 0x2000)
+            {
+                break;
+            }
+        }
+
+        if (texParam != nullptr && basePalAddr < 0x2000)
+        {
+            TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, basePalAddr);
+            ui->previewLayout->addWidget(texturePreviewer);
+            previewWidgets.push_back(texturePreviewer);
+        }
+    }
+
     switch (AggregatedFIFOCache[index].Command)
     {
     case 0x10: // MTX_MODE
@@ -765,6 +895,40 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
         colorWidget->color = color;
         ui->previewLayout->addWidget(colorWidget);
         previewWidgets.push_back(colorWidget);
+        break;
+    }
+
+    case 0x40: // BEGIN_VTXS
+    {
+        TexParam* texParam = nullptr;
+        u32 basePalAddr = 0x2000;
+
+        for (int i = index - 1; i >= 0; i--)
+        {  
+            if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
+            {
+                if (AggregatedFIFOCache[i].Params[0] != 0)
+                {
+                    texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
+                }
+            }
+            if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
+            {
+                basePalAddr = AggregatedFIFOCache[i].Params[0] & 0x1FFF;
+            }
+            
+            if (texParam != nullptr && basePalAddr < 0x2000)
+            {
+                break;
+            }
+        }
+
+        if (texParam != nullptr && basePalAddr < 0x2000)
+        {
+            TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, basePalAddr);
+            ui->previewLayout->addWidget(texturePreviewer);
+            previewWidgets.push_back(texturePreviewer);
+        }
         break;
     }
     }
