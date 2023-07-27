@@ -19,7 +19,6 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
-#include <vector>
 
 #include <QGraphicsScene>
 #include <QGraphicsView>
@@ -33,17 +32,26 @@
 
 extern EmuThread* emuThread;
 
-struct CmdAggregatedEntry
+static const char* getMatrixModeString(int mtxMode)
 {
-    u32* Params;
-    u8 Command;
-    
-    CmdAggregatedEntry(u8 command, u32* params)
+    switch (mtxMode)
     {
-        Command = command;
-        Params = params;
+        case 0:
+            return "Projection";
+
+        case 1:
+            return "Position";
+
+        case 2:
+            return "Position and Vector";
+
+        case 3:
+            return "Texture";
+
+        default:
+            return "Unknown Mode";
     }
-};
+}
 
 static QRgb RGB15toQRgb(u16 colorData)
 {
@@ -71,6 +79,22 @@ static void writeMultiParamString(std::stringstream &str, u32* execParams, int w
             }
         }
     }
+}
+
+static u16* unpackRawTexcoords(u32 packedTexcoords)
+{
+    u16* texcoords = new u16[2];
+    texcoords[0] = packedTexcoords & 0xFFFF;
+    texcoords[1] = packedTexcoords >> 16;
+    return texcoords;
+}
+
+static u16* transformTexcoords(u16* rawTexCoords, s32* texMatrix)
+{
+    u16* texcoords = new u16[2];
+    texcoords[0] = (rawTexCoords[0]*texMatrix[0] + rawTexCoords[1]*texMatrix[4] + texMatrix[8] + texMatrix[12]) >> 12;;
+    texcoords[1] = (rawTexCoords[0]*rawTexCoords[1] + rawTexCoords[1]*texMatrix[5] + texMatrix[9] + texMatrix[13]) >> 12;
+    return texcoords;
 }
 
 static TexParam* parseTexImageParam(u32 texparam)
@@ -338,11 +362,22 @@ TexturePreviewer* ThreeDRenderingViewerDialog::getTexturePreviewer(TexParam* tex
     return new TexturePreviewer(this, texture);
 }
 
-std::vector<CmdAggregatedEntry> AggregatedFIFOCache;
-
 QWidgetList previewWidgets = { };
+QList<QGridLayout*> previewGridLayouts { };
 
 ThreeDRenderingViewerDialog* ThreeDRenderingViewerDialog::currentDlg = nullptr;
+
+const char* ThreeDRenderingViewerDialog::findMtxMode(int index)
+{
+    for (int i = index - 1; i >= 0; i--)
+    {
+        if (this->AggregatedFIFOCache[i]->Command == 0x10) // MTX_MODE
+        {
+            return getMatrixModeString(this->AggregatedFIFOCache[i]->Params[0]);
+        }
+    }
+    return "Projection";
+}
 
 void ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
 {
@@ -351,20 +386,20 @@ void ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
     
     for (int i = index - 1; i >= 0; i--)
     {  
-        if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
+        if (this->AggregatedFIFOCache[i]->Command == 0x2A) // TEXIMAGE_PARAM
         {
-            if (AggregatedFIFOCache[i].Params[0] != 0)
+            if (this->AggregatedFIFOCache[i]->Params[0] != 0)
             {
-                texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
+                texParam = parseTexImageParam(this->AggregatedFIFOCache[i]->Params[0]);
                 if (texParam->Format == 7) // RGB15
                 {
                     break;
                 }
             }
         }
-        if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
+        if (this->AggregatedFIFOCache[i]->Command == 0x2B) // PLTT_BASE
         {
-            basePalAddr = AggregatedFIFOCache[i].Params[0] & 0x1FFF;
+            basePalAddr = this->AggregatedFIFOCache[i]->Params[0] & 0x1FFF;
         }
         
         if (texParam != nullptr && basePalAddr < 0x2000)
@@ -384,7 +419,7 @@ void ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
 void ThreeDRenderingViewerDialog::updatePipeline()
 {
     ui->pipelineCommandsTree->clear();
-    AggregatedFIFOCache.clear();
+    this->AggregatedFIFOCache.clear();
     // Remove all items from the preview layout
     QLayoutItem* item;
     while ((item = ui->previewLayout->takeAt(0)) != nullptr)
@@ -401,6 +436,8 @@ void ThreeDRenderingViewerDialog::updatePipeline()
     u32 execParamsCount = 0;
     u32 execParams[32];
 
+    int matrixMode = GPU3D::MatrixModeCache;
+
     for (u32 i = 0; i < numEntries; i++)
     {
         GPU3D::CmdFIFOEntry entry = GPU3D::CmdFIFOReporter[i];
@@ -408,6 +445,21 @@ void ThreeDRenderingViewerDialog::updatePipeline()
         std::stringstream paramString = std::stringstream("");
         bool createSubItem = false;
         bool endSubItem = false;
+
+        if (i == 0)
+        {
+            AggregatedProjectionMatrixCache.push_back(GPU3D::ProjMatrixCache);
+            AggregatedPositionMatrixCache.push_back(GPU3D::PosMatrixCache);
+            AggregatedVectorMatrixCache.push_back(GPU3D::VecMatrixCache);
+            AggregatedTextureMatrixCache.push_back(GPU3D::TexMatrixCache);
+        }
+        else
+        {
+            AggregatedProjectionMatrixCache.push_back(AggregatedProjectionMatrixCache[i - 1]);
+            AggregatedPositionMatrixCache.push_back(AggregatedPositionMatrixCache[i - 1]);
+            AggregatedVectorMatrixCache.push_back(AggregatedVectorMatrixCache[i - 1]);
+            AggregatedTextureMatrixCache.push_back(AggregatedTextureMatrixCache[i - 1]);
+        }
 
         u32 paramsRequiredCount = GPU3D::CmdNumParams[entry.Command];
         if (paramsRequiredCount <= 1)
@@ -420,27 +472,111 @@ void ThreeDRenderingViewerDialog::updatePipeline()
 
             case 0x10:
                 commandString = "MTX_MODE";
-                paramString << (entry.Param & 3);
+                matrixMode = entry.Param & 3;
+                paramString << matrixMode;
                 break;
 
             case 0x11:
                 commandString = "MTX_PUSH";
+                if (matrixMode == 0)
+                {
+                    memcpy(GPU3D::ProjMatrixStackCache, AggregatedProjectionMatrixCache[i], 16*4);
+                    GPU3D::ProjMatrixStackPointerCache++;
+                    GPU3D::ProjMatrixStackPointerCache &= 0x1;
+                }
+                else if (matrixMode == 3)
+                {
+                    memcpy(GPU3D::TexMatrixStackCache, AggregatedTextureMatrixCache[i], 16*4);
+                    GPU3D::TexMatrixStackPointerCache++;
+                    GPU3D::TexMatrixStackPointerCache &= 0x1;
+                }
+                else
+                {
+                    memcpy(GPU3D::PosMatrixStackCache[GPU3D::PosMatrixStackPointerCache & 0x1F], AggregatedPositionMatrixCache[i], 16*4);
+                    memcpy(GPU3D::VecMatrixStackCache[GPU3D::PosMatrixStackPointerCache & 0x1F], AggregatedVectorMatrixCache[i], 16*4);
+                    GPU3D::PosMatrixStackPointerCache++;
+                    GPU3D::PosMatrixStackPointerCache &= 0x3F;
+                }
                 break;
             
             case 0x12:
                 commandString = "MTX_POP";
+                if (matrixMode == 0)
+                {
+                    GPU3D::ProjMatrixStackPointerCache--;
+                    GPU3D::ProjMatrixStackPointerCache &= 0x1;
+                    memcpy(AggregatedProjectionMatrixCache[i], GPU3D::ProjMatrixStackCache, 16*4);
+                }
+                else if (matrixMode == 3)
+                {
+                    GPU3D::TexMatrixStackPointerCache--;
+                    GPU3D::TexMatrixStackPointerCache &= 0x1;
+                    memcpy(AggregatedTextureMatrixCache[i], GPU3D::TexMatrixStackCache, 16*4);
+                }
+                else
+                {
+                    s32 offset = (s32)(entry.Param << 26) >> 26;
+                    GPU3D::PosMatrixStackPointerCache -= offset;
+                    GPU3D::PosMatrixStackPointerCache &= 0x3F;
+                    memcpy(AggregatedPositionMatrixCache[i], GPU3D::PosMatrixStackCache[GPU3D::PosMatrixStackPointerCache & 0x1F], 16*4);
+                    memcpy(AggregatedVectorMatrixCache[i], GPU3D::VecMatrixStackCache[GPU3D::PosMatrixStackPointerCache & 0x1F], 16*4);
+                }
                 break;
 
             case 0x13:
                 commandString = "MTX_STORE";
+                if (matrixMode == 0)
+                {
+                    memcpy(GPU3D::ProjMatrixStackCache, AggregatedProjectionMatrixCache[i], 16*4);
+                }
+                else if (matrixMode == 3)
+                {
+                    memcpy(GPU3D::TexMatrixStackCache, AggregatedTextureMatrixCache[i], 16*4);
+                }
+                else
+                {
+                    u32 addr = entry.Param & 0x1F;
+                    memcpy(GPU3D::PosMatrixStackCache[addr], AggregatedPositionMatrixCache[i], 16*4);
+                    memcpy(GPU3D::VecMatrixStackCache[addr], AggregatedVectorMatrixCache[i], 16*4);
+                }
                 break;
 
             case 0x14:
                 commandString = "MTX_RESTORE";
+                if (matrixMode == 0)
+                {
+                    memcpy(AggregatedProjectionMatrixCache[i], GPU3D::ProjMatrixStackCache, 16*4);
+                }
+                else if (matrixMode == 3)
+                {
+                    memcpy(AggregatedTextureMatrixCache[i], GPU3D::TexMatrixStackCache, 16*4);
+                }
+                else
+                {
+                    u32 addr = entry.Param & 0x1F;
+                    memcpy(AggregatedPositionMatrixCache[i], GPU3D::PosMatrixStackCache[addr], 16*4);
+                    memcpy(AggregatedVectorMatrixCache[i], GPU3D::VecMatrixStackCache[addr], 16*4);
+                }
                 break;
 
             case 0x15:
                 commandString = "MTX_IDENTITY";
+                if (matrixMode == 0)
+                {
+                    GPU3D::MatrixLoadIdentity(AggregatedProjectionMatrixCache[i]);
+                }
+                else if (matrixMode == 3)
+                {
+                    GPU3D::MatrixLoadIdentity(AggregatedTextureMatrixCache[i]);
+                }
+                else
+                {
+                    GPU3D::MatrixLoadIdentity(AggregatedPositionMatrixCache[i]);
+                    if (matrixMode == 2)
+                    {
+                        GPU3D::MatrixLoadIdentity(AggregatedVectorMatrixCache[i]);
+                    }
+                }
                 break;
                 
             case 0x20:
@@ -550,7 +686,7 @@ void ThreeDRenderingViewerDialog::updatePipeline()
 
             u32* params = new u32[1];
             params[0] = entry.Param;
-            AggregatedFIFOCache.push_back(CmdAggregatedEntry(entry.Command, params));
+            this->AggregatedFIFOCache.push_back(new CmdAggregatedEntry(entry.Command, params, 1));
         }
         else
         {
@@ -565,36 +701,144 @@ void ThreeDRenderingViewerDialog::updatePipeline()
                 case 0x16:
                     commandString = "MTX_LOAD_4x4";
                     writeMultiParamString(paramString, execParams, 4, 4);
+                    if (matrixMode == 0)
+                    {
+                        GPU3D::MatrixLoad4x4(AggregatedProjectionMatrixCache[i], (s32*)execParams);
+                    }
+                    else if (matrixMode == 3)
+                    {
+                        GPU3D::MatrixLoad4x4(AggregatedTextureMatrixCache[i], (s32*)execParams);
+                    }
+                    else
+                    {
+                        GPU3D::MatrixLoad4x4(AggregatedPositionMatrixCache[i], (s32*)execParams);
+                        if (matrixMode == 2)
+                        {
+                            GPU3D::MatrixLoad4x4(AggregatedVectorMatrixCache[i], (s32*)execParams);
+                        }
+                    }
                     break;
 
                 case 0x17:
                     commandString = "MTX_LOAD_4x3";
-                    writeMultiParamString(paramString, execParams, 4, 3);                    
+                    writeMultiParamString(paramString, execParams, 4, 3);
+                    if (matrixMode == 0)
+                    {
+                        GPU3D::MatrixLoad4x3(AggregatedProjectionMatrixCache[i], (s32*)execParams);
+                    }
+                    else if (matrixMode == 3)
+                    {
+                        GPU3D::MatrixLoad4x3(AggregatedTextureMatrixCache[i], (s32*)execParams);
+                    }
+                    else
+                    {
+                        GPU3D::MatrixLoad4x3(AggregatedPositionMatrixCache[i], (s32*)execParams);
+                        if (matrixMode == 2)
+                        {
+                            GPU3D::MatrixLoad4x3(AggregatedVectorMatrixCache[i], (s32*)execParams);
+                        }
+                    }
                     break;
                     
                 case 0x18:
                     commandString = "MTX_MULT_4x4";
                     writeMultiParamString(paramString, execParams, 4, 4);
+                    if (matrixMode == 0)
+                    {
+                        GPU3D::MatrixMult4x4(AggregatedProjectionMatrixCache[i], (s32*)execParams);
+                    }
+                    else if (matrixMode == 3)
+                    {
+                        GPU3D::MatrixMult4x4(AggregatedTextureMatrixCache[i], (s32*)execParams);
+                    }
+                    else
+                    {
+                        GPU3D::MatrixMult4x4(AggregatedPositionMatrixCache[i], (s32*)execParams);
+                        if (matrixMode == 2)
+                        {
+                            GPU3D::MatrixMult4x4(AggregatedVectorMatrixCache[i], (s32*)execParams);
+                        }
+                    }
                     break;
                     
                 case 0x19:
                     commandString = "MTX_MULT_4x3";
                     writeMultiParamString(paramString, execParams, 4, 3);
+                    if (matrixMode == 0)
+                    {
+                        GPU3D::MatrixMult4x3(AggregatedProjectionMatrixCache[i], (s32*)execParams);
+                    }
+                    else if (matrixMode == 3)
+                    {
+                        GPU3D::MatrixMult4x3(AggregatedTextureMatrixCache[i], (s32*)execParams);
+                    }
+                    else
+                    {
+                        GPU3D::MatrixMult4x3(AggregatedPositionMatrixCache[i], (s32*)execParams);
+                        if (matrixMode == 2)
+                        {
+                            GPU3D::MatrixMult4x3(AggregatedVectorMatrixCache[i], (s32*)execParams);
+                        }
+                    }
                     break;
                     
                 case 0x1A:
                     commandString = "MTX_MULT_3x3";
                     writeMultiParamString(paramString, execParams, 3, 3);
+                    if (matrixMode == 0)
+                    {
+                        GPU3D::MatrixMult3x3(AggregatedProjectionMatrixCache[i], (s32*)execParams);
+                    }
+                    else if (matrixMode == 3)
+                    {
+                        GPU3D::MatrixMult3x3(AggregatedTextureMatrixCache[i], (s32*)execParams);
+                    }
+                    else
+                    {
+                        GPU3D::MatrixMult3x3(AggregatedPositionMatrixCache[i], (s32*)execParams);
+                        if (matrixMode == 2)
+                        {
+                            GPU3D::MatrixMult3x3(AggregatedVectorMatrixCache[i], (s32*)execParams);
+                        }
+                    }
                     break;
                     
                 case 0x1B:
                     commandString = "MTX_SCALE";
                     writeMultiParamString(paramString, execParams, 3, 1);
+                    if (matrixMode == 0)
+                    {
+                        GPU3D::MatrixScale(AggregatedProjectionMatrixCache[i], (s32*)execParams);
+                    }
+                    else if (matrixMode == 3)
+                    {
+                        GPU3D::MatrixScale(AggregatedTextureMatrixCache[i], (s32*)execParams);
+                    }
+                    else
+                    {
+                        GPU3D::MatrixScale(AggregatedPositionMatrixCache[i], (s32*)execParams);
+                    }
                     break;
                     
                 case 0x1C:
                     commandString = "MTX_TRANS";
                     writeMultiParamString(paramString, execParams, 3, 1);
+                    if (matrixMode == 0)
+                    {
+                        GPU3D::MatrixTranslate(AggregatedProjectionMatrixCache[i], (s32*)execParams);
+                    }
+                    else if (matrixMode == 3)
+                    {
+                        GPU3D::MatrixTranslate(AggregatedTextureMatrixCache[i], (s32*)execParams);
+                    }
+                    else
+                    {
+                        GPU3D::MatrixTranslate(AggregatedPositionMatrixCache[i], (s32*)execParams);
+                        if (matrixMode == 2)
+                        {
+                            GPU3D::MatrixTranslate(AggregatedVectorMatrixCache[i], (s32*)execParams);
+                        }
+                    }
                     break;
 
                 case 0x23:
@@ -623,7 +867,9 @@ void ThreeDRenderingViewerDialog::updatePipeline()
                     break;
                 }
 
-                AggregatedFIFOCache.push_back(CmdAggregatedEntry(entry.Command, execParams));
+                u32 newExecParams[32] = { };
+                memcpy(newExecParams, execParams, 32 * sizeof(u32));
+                this->AggregatedFIFOCache.push_back(new CmdAggregatedEntry(entry.Command, newExecParams));
             }
             else
             {
@@ -632,7 +878,7 @@ void ThreeDRenderingViewerDialog::updatePipeline()
         }
 
         QList<QString> strings = QList<QString>();
-        strings.append(QString(std::to_string(AggregatedFIFOCache.size() - 1).c_str()));
+        strings.append(QString(std::to_string(this->AggregatedFIFOCache.size() - 1).c_str()));
         strings.append(QString(commandString.c_str()));
         strings.append(QString(paramString.str().c_str()));
         
@@ -723,11 +969,23 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
         addVertexGroupTexturePreview(index);
     }
 
-    switch (AggregatedFIFOCache[index].Command)
+    switch (this->AggregatedFIFOCache[index]->Command)
     {
     case 0x10: // MTX_MODE
     {
-        QLabel* matrixModeLabel = new QLabel((std::string("Matrix Mode ") + std::to_string(AggregatedFIFOCache[index].Params[0])).c_str());
+        QLabel* matrixModeLabel = new QLabel((std::string("Matrix Mode: ") + getMatrixModeString(this->AggregatedFIFOCache[index]->Params[0])).c_str());
+        ui->previewLayout->addWidget(matrixModeLabel);
+        previewWidgets.push_back(matrixModeLabel);
+        break;
+    }
+
+    case 0x11: // MTX_PUSH
+    case 0x12: // MTX_POP
+    case 0x13: // MTX_STORE
+    case 0x14: // MTX_RESTORE
+    case 0x15: // MTX_IDENTITY
+    {
+        QLabel* matrixModeLabel = new QLabel(this->findMtxMode(index));
         ui->previewLayout->addWidget(matrixModeLabel);
         previewWidgets.push_back(matrixModeLabel);
         break;
@@ -736,49 +994,186 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
     case 0x16: // MTX_LOAD_4x4
     case 0x18: // MTX_MULT_4x4
     {
-        std::stringstream str = std::stringstream("");
-        writeMultiParamString(str, AggregatedFIFOCache[index].Params, 4, 4, true);
-        QLabel* mtxLabel = new QLabel(str.str().c_str());
-        ui->previewLayout->addWidget(mtxLabel);
+        QLabel* mtxLabel = new QLabel(this->findMtxMode(index));
         previewWidgets.push_back(mtxLabel);
+
+        QGridLayout* mtxGrid = new QGridLayout();
+        mtxGrid->setAlignment(Qt::AlignCenter);
+        mtxGrid->addWidget(mtxLabel, 0, 0);
+
+        int entryNum = 0;
+        for (int y = 0; y < 4; y++)
+        {
+            for (int x = 0; x < 4; x++)
+            {
+                QLabel* mtxValLabel = new QLabel(std::to_string(((s32)this->AggregatedFIFOCache[index]->Params[entryNum++] / 4096.0f)).c_str());
+                mtxValLabel->setStyleSheet("font-weight: bold;");
+                mtxGrid->addWidget(mtxValLabel, y + 1, x);
+                previewWidgets.push_back(mtxValLabel);
+            }
+        }
+
+        ui->previewLayout->addLayout(mtxGrid);
+        previewGridLayouts.push_back(mtxGrid);
         break;
     }
 
     case 0x17: // MTX_LOAD_4x3
     case 0x19: // MTX_MULT_4x3
     {
-        std::stringstream str = std::stringstream("");
-        writeMultiParamString(str, AggregatedFIFOCache[index].Params, 4, 3, true);
-        QLabel* mtxLabel = new QLabel(str.str().c_str());
-        ui->previewLayout->addWidget(mtxLabel);
+        QLabel* mtxLabel = new QLabel(this->findMtxMode(index));
         previewWidgets.push_back(mtxLabel);
+
+        QGridLayout* mtxGrid = new QGridLayout();
+        mtxGrid->setAlignment(Qt::AlignCenter);
+        mtxGrid->addWidget(mtxLabel, 0, 0);
+        
+        int entryNum = 0;
+        for (int y = 0; y < 4; y++)
+        {
+            for (int x = 0; x < 4; x++)
+            {
+                QLabel* mtxValLabel;
+                if (x == 3 && y == 3)
+                {
+                    mtxValLabel = new QLabel("1.0");
+                }
+                else if (x == 3)
+                {
+                    mtxValLabel = new QLabel("0.0");
+                }
+                else
+                {
+                    mtxValLabel = new QLabel(std::to_string(((s32)this->AggregatedFIFOCache[index]->Params[entryNum++] / 4096.0f)).c_str());
+                    mtxValLabel->setStyleSheet("font-weight: bold;");
+                }
+                mtxGrid->addWidget(mtxValLabel, y + 1, x);
+                previewWidgets.push_back(mtxValLabel);
+            }
+        }
+
+        ui->previewLayout->addLayout(mtxGrid);
+        previewGridLayouts.push_back(mtxGrid);
         break;
     }
 
     case 0x1A: // MTX_MULT_3x3
     {
-        std::stringstream str = std::stringstream("");
-        writeMultiParamString(str, AggregatedFIFOCache[index].Params, 3, 3, true);
-        QLabel* mtxLabel = new QLabel(str.str().c_str());
-        ui->previewLayout->addWidget(mtxLabel);
+        QLabel* mtxLabel = new QLabel(this->findMtxMode(index));
         previewWidgets.push_back(mtxLabel);
+
+        QGridLayout* mtxGrid = new QGridLayout();
+        mtxGrid->setAlignment(Qt::AlignCenter);
+        mtxGrid->addWidget(mtxLabel, 0, 0);
+        
+        int entryNum = 0;
+        for (int y = 0; y < 4; y++)
+        {
+            for (int x = 0; x < 4; x++)
+            {
+                QLabel* mtxValLabel;
+                if (x == 3 && y == 3)
+                {
+                    mtxValLabel = new QLabel("1.0");
+                }
+                else if (x == 3 || y == 3)
+                {
+                    mtxValLabel = new QLabel("0.0");
+                }
+                else
+                {
+                    mtxValLabel = new QLabel(std::to_string(((s32)this->AggregatedFIFOCache[index]->Params[entryNum++] / 4096.0f)).c_str());
+                    mtxValLabel->setStyleSheet("font-weight: bold;");
+                }
+                mtxGrid->addWidget(mtxValLabel, y + 1, x);
+                previewWidgets.push_back(mtxValLabel);
+            }
+        }
+
+        ui->previewLayout->addLayout(mtxGrid);
+        previewGridLayouts.push_back(mtxGrid);
         break;
     }
     
     case 0x1B: // MTX_SCALE
+    {
+        QLabel* mtxLabel = new QLabel(this->findMtxMode(index));
+        previewWidgets.push_back(mtxLabel);
+
+        QGridLayout* mtxGrid = new QGridLayout();
+        mtxGrid->setAlignment(Qt::AlignCenter);
+        mtxGrid->addWidget(mtxLabel, 0, 0);
+        
+        int entryNum = 0;
+        for (int y = 0; y < 4; y++)
+        {
+            for (int x = 0; x < 4; x++)
+            {
+                QLabel* mtxValLabel;
+                if (x != 3 && x == y)
+                {
+                    mtxValLabel = new QLabel(std::to_string(((s32)this->AggregatedFIFOCache[index]->Params[entryNum++] / 4096.0f)).c_str());
+                    mtxValLabel->setStyleSheet("font-weight: bold;");
+                }
+                else if (x == 3 && x == y)
+                {
+                    mtxValLabel = new QLabel("1.0");
+                }
+                else
+                {
+                    mtxValLabel = new QLabel("0.0");
+                }
+                mtxGrid->addWidget(mtxValLabel, y + 1, x);
+                previewWidgets.push_back(mtxValLabel);
+            }
+        }
+
+        ui->previewLayout->addLayout(mtxGrid);
+        previewGridLayouts.push_back(mtxGrid);
+        break;
+    }
+
     case 0x1C: // MTX_TRANS
     {
-        std::stringstream str = std::stringstream("");
-        writeMultiParamString(str, AggregatedFIFOCache[index].Params, 3, 1, true);
-        QLabel* mtxLabel = new QLabel(str.str().c_str());
-        ui->previewLayout->addWidget(mtxLabel);
+        QLabel* mtxLabel = new QLabel(this->findMtxMode(index));
         previewWidgets.push_back(mtxLabel);
+
+        QGridLayout* mtxGrid = new QGridLayout();
+        mtxGrid->setAlignment(Qt::AlignCenter);
+        mtxGrid->addWidget(mtxLabel, 0, 0);
+        
+        int entryNum = 0;
+        for (int y = 0; y < 4; y++)
+        {
+            for (int x = 0; x < 4; x++)
+            {
+                QLabel* mtxValLabel;
+                if (y == 3 && x != 3)
+                {
+                    mtxValLabel = new QLabel(std::to_string(((s32)this->AggregatedFIFOCache[index]->Params[entryNum++] / 4096.0f)).c_str());
+                    mtxValLabel->setStyleSheet("font-weight: bold;");
+                }
+                else if (y == 3 && x == 3)
+                {
+                    mtxValLabel = new QLabel("1.0");
+                }
+                else
+                {
+                    mtxValLabel = new QLabel("0.0");
+                }
+                mtxGrid->addWidget(mtxValLabel, y + 1, x);
+                previewWidgets.push_back(mtxValLabel);
+            }
+        }
+
+        ui->previewLayout->addLayout(mtxGrid);
+        previewGridLayouts.push_back(mtxGrid);
         break;
     }
     
     case 0x20: // COLOR
     {
-        u32 rgb15Color = AggregatedFIFOCache[index].Params[0];
+        u32 rgb15Color = this->AggregatedFIFOCache[index]->Params[0];
         uint colorRgb = ((rgb15Color & 0x1F) << 19) | (((rgb15Color >> 5) & 0x1F) << 11) | (((rgb15Color >> 10) & 0x1F) << 3) | 0xFF000000;
         QColor color = QColor(QRgb(colorRgb));
 
@@ -789,10 +1184,46 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
         break;   
     }
 
+    case 0x22: // TEXCOORD
+    {
+        u16* texCoords = unpackRawTexcoords(this->AggregatedFIFOCache[index]->Params[0]);
+        TexParam* texParam = nullptr;
+        for (int i = index - 1; i >= 0; i--)
+        {
+            if (this->AggregatedFIFOCache[i]->Command == 0x2A) // TEXIMAGE_PARAM
+            {
+                texParam = parseTexImageParam(this->AggregatedFIFOCache[i]->Params[0]);
+                if (texParam->TransformationMode == 1)
+                {
+                    texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[index]);
+                }
+                break;
+            }
+        }
+        if (texParam == nullptr)
+        {
+            texParam = parseTexImageParam(GPU3D::TexParamCache);
+            if (texParam->TransformationMode == 1)
+            {
+                texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[index]);
+            }
+        }
+
+        float s = (texCoords[0] % (16 * (texParam->Width + 1))) / 16.f;
+        float t = (texCoords[1] % (16 * (texParam->Height + 1))) / 16.f;
+        QLabel* texCoordLabel = new QLabel((std::to_string(s) + ", " + std::to_string(t)).c_str());
+        ui->previewLayout->addWidget(texCoordLabel);
+        previewWidgets.push_back(texCoordLabel);
+
+        // a little risky!
+        ((TexturePreviewer*)previewWidgets[0])->texCoord = new QPointF(s, t);
+        break;
+    }
+
     case 0x2A: // TEXIMAGE_PARAM
     {
         std::stringstream str = std::stringstream("");
-        if (AggregatedFIFOCache[index].Params[0] == 0)
+        if (this->AggregatedFIFOCache[index]->Params[0] == 0)
         {
             QLabel* texParamLabel = new QLabel("No texture.");
             ui->previewLayout->addWidget(texParamLabel);
@@ -800,7 +1231,7 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
         }
         else
         {
-            TexParam* texParam = parseTexImageParam(AggregatedFIFOCache[index].Params[0]);
+            TexParam* texParam = parseTexImageParam(this->AggregatedFIFOCache[index]->Params[0]);
 
             str << "VRAM Address: " << texParam->Vramaddr << "\nSize: " << texParam->Width << "x" << texParam->Height << "\nType: ";
             switch (texParam->Format)
@@ -878,9 +1309,9 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
             {
                 for (int i = index - 1; i >= 0; i--)
                 {
-                    if (AggregatedFIFOCache[i].Command == 0x2B) // PLTT_BASE
+                    if (this->AggregatedFIFOCache[i]->Command == 0x2B) // PLTT_BASE
                     {
-                        TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[i].Params[0] & 0x1FFF);
+                        TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, this->AggregatedFIFOCache[i]->Params[0] & 0x1FFF);
                         ui->previewLayout->addWidget(texturePreviewer);
                         previewWidgets.push_back(texturePreviewer);
                         break;
@@ -895,13 +1326,13 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
     {
         for (int i = index - 1; i >= 0; i--)
         {  
-            if (AggregatedFIFOCache[i].Command == 0x2A) // TEXIMAGE_PARAM
+            if (this->AggregatedFIFOCache[i]->Command == 0x2A) // TEXIMAGE_PARAM
             {
-                if (AggregatedFIFOCache[i].Params[0] != 0)
+                if (this->AggregatedFIFOCache[i]->Params[0] != 0)
                 {
-                    TexParam* texParam = parseTexImageParam(AggregatedFIFOCache[i].Params[0]);
+                    TexParam* texParam = parseTexImageParam(this->AggregatedFIFOCache[i]->Params[0]);
 
-                    u32 palAddr = AggregatedFIFOCache[index].Params[0];
+                    u32 palAddr = this->AggregatedFIFOCache[index]->Params[0];
                     if (texParam->Format == 2) // PAL4
                     {
                         palAddr <<= 3;
@@ -916,7 +1347,7 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
                     ui->previewLayout->addWidget(pltBaseLabel);
                     previewWidgets.push_back(pltBaseLabel);
 
-                    TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, AggregatedFIFOCache[index].Params[0] & 0x1FFF);
+                    TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, this->AggregatedFIFOCache[index]->Params[0] & 0x1FFF);
                     ui->previewLayout->addWidget(texturePreviewer);
                     previewWidgets.push_back(texturePreviewer);
                     break;
@@ -928,7 +1359,7 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
 
     case 0x33: // LIGHT_COLOR
     {
-        u32 rgb15Color = AggregatedFIFOCache[index].Params[0];
+        u32 rgb15Color = this->AggregatedFIFOCache[index]->Params[0];
         uint colorRgb = ((rgb15Color & 0x1F) << 3) | (((rgb15Color >> 5) & 0x1F) << 11) | (((rgb15Color >> 10) & 0x1F) << 19) | 0xFF000000;
         QColor color = QColor(QRgb(colorRgb));
 
@@ -946,6 +1377,42 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
     case 0x40: // BEGIN_VTXS
     {
         addVertexGroupTexturePreview(index);
+        QVector<QPointF>* texCoordsList = new QVector<QPointF>();
+        for (int i = index + 1; i < this->AggregatedFIFOCache.size() && this->AggregatedFIFOCache[i]->Command != 0x41 && this->AggregatedFIFOCache[i]->Command != 0x40; i++)
+        {
+            if (this->AggregatedFIFOCache[i]->Command == 0x22) // TEXCOORD
+            {
+                u16* texCoords = unpackRawTexcoords(this->AggregatedFIFOCache[i]->Params[0]);
+                TexParam* texParam = nullptr;
+                for (int j = index - 1; j >= 0; j--)
+                {
+                    if (this->AggregatedFIFOCache[j]->Command == 0x2A) // TEXIMAGE_PARAM
+                    {
+                        texParam = parseTexImageParam(this->AggregatedFIFOCache[j]->Params[0]);
+                        if (texParam->TransformationMode == 1)
+                        {
+                            texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[i]);
+                        }
+                        break;
+                    }
+                }
+                if (texParam == nullptr)
+                {
+                    texParam = parseTexImageParam(GPU3D::TexParamCache);
+                    if (texParam->TransformationMode == 1)
+                    {
+                        texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[i]);
+                    }
+                }
+
+                float s = (texCoords[0] % (16 * (texParam->Width + 1))) / 16.f;
+                float t = (texCoords[1] % (16 * (texParam->Height + 1))) / 16.f;
+                texCoordsList->push_back(QPointF(qreal(s), qreal(t)));
+            }
+        }
+        QPointF* closingPoint = new QPointF(texCoordsList[0][0]);
+        texCoordsList->push_back(*closingPoint);
+        ((TexturePreviewer*)previewWidgets[0])->texPoly = new QPolygonF(*texCoordsList);
         break;
     }
     }
@@ -954,4 +1421,4 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
 void ThreeDRenderingViewerDialog::on_ThreeDRenderingViewerDialog_rejected()
 {
     closeDlg();
-}
+}   

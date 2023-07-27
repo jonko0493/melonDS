@@ -19,6 +19,7 @@
 #ifndef THREEDRENDERINGPIPELINEVIEW_H
 #define THREEDRENDERINGPIPELINEVIEW_H
 
+#include <vector>
 #include <QDialog>
 
 #include "ThreeDRenderingWidgets.h"
@@ -38,6 +39,22 @@ struct TexParam
     s32 Format;
     u32 Alpha0;
     s32 TransformationMode;
+};
+
+struct CmdAggregatedEntry
+{
+    u32 Params[32];
+    u8 Command;
+    
+    CmdAggregatedEntry(u8 command, u32* params, int paramsSize = 32)
+    {
+        Command = command;
+        memcpy(Params, params, paramsSize * sizeof(u32));
+    }
+    ~CmdAggregatedEntry()
+    {
+        free(Params);
+    }
 };
 
 class ThreeDRenderingViewerDialog : QDialog
@@ -79,11 +96,17 @@ private slots:
 private:
     u8 VRAMFlat_TextureCache[512*1024] = { };
     u8 VRAMFlat_TexPalCache[128*1024] = { };
+    std::vector<CmdAggregatedEntry*> AggregatedFIFOCache = { };
+    std::vector<s32*> AggregatedProjectionMatrixCache = { };
+    std::vector<s32*> AggregatedPositionMatrixCache = { };
+    std::vector<s32*> AggregatedVectorMatrixCache = { };
+    std::vector<s32*> AggregatedTextureMatrixCache = { };
 
     Ui::ThreeDRenderingViewerDialog* ui;
     void updatePipeline();
     TexturePreviewer* getTexturePreviewer(TexParam* texParam, u32 texPalAddr);
     void addVertexGroupTexturePreview(int index);
+    const char* findMtxMode(int index);
 };
 
 #endif // THREEDRENDERINGPIPELINEVIEW_H

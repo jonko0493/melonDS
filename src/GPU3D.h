@@ -178,6 +178,30 @@ typedef union
 extern bool Report3DPipeline; // when on, reports various graphics stuff to the 3D rendering viewer
 extern const u8 CmdNumParams[256];
 extern std::vector<CmdFIFOEntry> CmdFIFOReporter;
+// Matrix state for reporting to 3D previewer
+extern u32 TexParamCache;
+extern u32 MatrixModeCache;
+extern s32 ProjMatrixCache[16];
+extern s32 PosMatrixCache[16];
+extern s32 VecMatrixCache[16];
+extern s32 TexMatrixCache[16];
+extern s32 ProjMatrixStackCache[16];
+extern s32 PosMatrixStackCache[32][16];
+extern s32 VecMatrixStackCache[32][16];
+extern s32 TexMatrixStackCache[16];
+extern s32 ProjMatrixStackPointerCache;
+extern s32 PosMatrixStackPointerCache;
+extern s32 TexMatrixStackPointerCache;
+
+// Utility functions that can be used by the 3D previewer
+extern void MatrixLoadIdentity(s32* m);
+extern void MatrixLoad4x4(s32* m, s32* s);
+extern void MatrixLoad4x3(s32* m, s32* s);
+extern void MatrixMult4x4(s32* m, s32* s);
+extern void MatrixMult4x3(s32* m, s32* s);
+extern void MatrixMult3x3(s32* m, s32* s);
+extern void MatrixScale(s32* m, s32* s);
+extern void MatrixTranslate(s32* m, s32* s);
 }
 
 #include "GPU3D_Soft.h"
