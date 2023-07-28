@@ -57,7 +57,7 @@ class TexturePreviewer : public QWidget
 public:
     QImage* texture;
     QPointF* texCoord = nullptr;
-    QPolygonF* texPoly = nullptr;
+    QVector<QPolygonF>* texPolys = nullptr;
 
     TexturePreviewer(QWidget* parent, QImage* texture) : QWidget(parent)
     {
@@ -84,11 +84,13 @@ protected:
             painter.setBrush(QBrush(Qt::red));
             painter.drawEllipse(*texCoord, 3.0, 3.0);
         }
-        if (texPoly != nullptr)
+        if (texPolys != nullptr)
         {
-            texPoly->translate(1.0, 1.0);
-            painter.setPen(QPen(Qt::red, qreal(3.0)));
-            painter.drawPolyline(*texPoly);
+            painter.setPen(QPen(Qt::red, qreal(2.0)));
+            for (int i = 0; i < this->texPolys->size(); i++)
+            {
+                painter.drawPolyline((*texPolys)[i]);
+            }
         }
     }
 };

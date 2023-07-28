@@ -656,6 +656,21 @@ void ThreeDRenderingViewerDialog::updatePipeline()
                 
             case 0x40:
                 commandString = "BEGIN_VTXS";
+                switch (entry.Param)
+                {
+                    case 0:
+                        paramString << "Triangles";
+                        break;
+                    case 1:
+                        paramString << "Quads";
+                        break;
+                    case 2:
+                        paramString << "Tristrips";
+                        break;
+                    case 3:
+                        paramString << "Quadstrips";
+                        break;
+                }
                 createSubItem = true;
                 break;
                 
@@ -920,6 +935,7 @@ ThreeDRenderingViewerDialog::~ThreeDRenderingViewerDialog()
 {
     GPU3D::Report3DPipeline = false;
     emuThread->emuUnpause();
+    previewWidgets.clear();
     delete ui;
 }
 
@@ -1377,42 +1393,56 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
     case 0x40: // BEGIN_VTXS
     {
         addVertexGroupTexturePreview(index);
-        QVector<QPointF>* texCoordsList = new QVector<QPointF>();
-        for (int i = index + 1; i < this->AggregatedFIFOCache.size() && this->AggregatedFIFOCache[i]->Command != 0x41 && this->AggregatedFIFOCache[i]->Command != 0x40; i++)
+        bool onePoly = this->AggregatedFIFOCache[index]->Params[0] >= 2;
+        int numTexCoords = this->AggregatedFIFOCache[index]->Params[0] == 0 ? 3 : 4;
+        
+        QVector<QPolygonF>* texPolygonList = new QVector<QPolygonF>();
+        for (int i = index + 1; i < this->AggregatedFIFOCache.size() && this->AggregatedFIFOCache[i]->Command != 0x41 && this->AggregatedFIFOCache[i]->Command != 0x40;)
         {
-            if (this->AggregatedFIFOCache[i]->Command == 0x22) // TEXCOORD
+            QVector<QPointF>* texCoordsList = new QVector<QPointF>();
+            for (int j = 0; (onePoly || j < numTexCoords) && i < this->AggregatedFIFOCache.size() && this->AggregatedFIFOCache[i]->Command != 0x41 && this->AggregatedFIFOCache[i]->Command != 0x40; i++)
             {
-                u16* texCoords = unpackRawTexcoords(this->AggregatedFIFOCache[i]->Params[0]);
-                TexParam* texParam = nullptr;
-                for (int j = index - 1; j >= 0; j--)
+                if (this->AggregatedFIFOCache[i]->Command == 0x22) // TEXCOORD
                 {
-                    if (this->AggregatedFIFOCache[j]->Command == 0x2A) // TEXIMAGE_PARAM
+                    u16* texCoords = unpackRawTexcoords(this->AggregatedFIFOCache[i]->Params[0]);
+                    TexParam* texParam = nullptr;
+                    for (int j = index - 1; j >= 0; j--)
                     {
-                        texParam = parseTexImageParam(this->AggregatedFIFOCache[j]->Params[0]);
+                        if (this->AggregatedFIFOCache[j]->Command == 0x2A) // TEXIMAGE_PARAM
+                        {
+                            texParam = parseTexImageParam(this->AggregatedFIFOCache[j]->Params[0]);
+                            if (texParam->TransformationMode == 1)
+                            {
+                                texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[i]);
+                            }
+                            break;
+                        }
+                    }
+                    if (texParam == nullptr)
+                    {
+                        texParam = parseTexImageParam(GPU3D::TexParamCache);
                         if (texParam->TransformationMode == 1)
                         {
                             texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[i]);
                         }
-                        break;
                     }
-                }
-                if (texParam == nullptr)
-                {
-                    texParam = parseTexImageParam(GPU3D::TexParamCache);
-                    if (texParam->TransformationMode == 1)
-                    {
-                        texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[i]);
-                    }
-                }
 
-                float s = (texCoords[0] % (16 * (texParam->Width + 1))) / 16.f;
-                float t = (texCoords[1] % (16 * (texParam->Height + 1))) / 16.f;
-                texCoordsList->push_back(QPointF(qreal(s), qreal(t)));
+                    float s = (texCoords[0] % (16 * (texParam->Width + 1))) / 16.f;
+                    float t = (texCoords[1] % (16 * (texParam->Height + 1))) / 16.f;
+                    texCoordsList->push_back(QPointF(qreal(s), qreal(t)));
+                    j++;
+                }
+            }
+            if (texCoordsList->size() > 0)
+            {
+                QPointF* closingPoint = new QPointF(texCoordsList[0][0]);
+                texCoordsList->push_back(*closingPoint);
+                QPolygonF* texPoly = new QPolygonF(*texCoordsList);
+                texPoly->translate(1.0, 1.0); // translate it to match the preview window being slightly larger for border effects
+                texPolygonList->push_back(*texPoly);
             }
         }
-        QPointF* closingPoint = new QPointF(texCoordsList[0][0]);
-        texCoordsList->push_back(*closingPoint);
-        ((TexturePreviewer*)previewWidgets[0])->texPoly = new QPolygonF(*texCoordsList);
+        ((TexturePreviewer*)previewWidgets[0])->texPolys = texPolygonList;
         break;
     }
     }
