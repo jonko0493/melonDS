@@ -407,6 +407,14 @@ void ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
             break;
         }
     }
+    if (texParam == nullptr)
+    {
+        texParam = parseTexImageParam(GPU3D::TexParamCache);
+    }
+    if (basePalAddr == 0x2000)
+    {
+        basePalAddr = GPU3D::TexPaletteCache;
+    }
 
     if (texParam != nullptr && (basePalAddr < 0x2000 || texParam->Format == 7))
     {

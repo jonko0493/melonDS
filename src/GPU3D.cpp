@@ -144,6 +144,7 @@ std::vector<CmdFIFOEntry> CmdFIFOCache;
 std::vector<CmdFIFOEntry> CmdFIFOReporter;
 u32 MatrixModeCache;
 u32 TexParamCache;
+u32 TexPaletteCache;
 s32 ProjMatrixCache[16];
 s32 PosMatrixCache[16];
 s32 VecMatrixCache[16];
@@ -1844,23 +1845,6 @@ void ExecuteCommand()
 
     if (Report3DPipeline)
     {
-        if (CmdFIFOCache.size() == 0)
-        {
-            // at beginning of frame, we cache the state
-            MatrixModeCache = MatrixMode;
-            TexParamCache = TexParam;
-            std::copy(ProjMatrix, ProjMatrix + 16, ProjMatrixCache);
-            std::copy(PosMatrix, PosMatrix + 16, PosMatrixCache);
-            std::copy(VecMatrix, VecMatrix + 16, VecMatrixCache);
-            std::copy(TexMatrix, TexMatrix + 16, TexMatrixCache);
-            std::copy(ProjMatrixStack, ProjMatrixStack + 16, ProjMatrixStackCache);
-            std::copy(&PosMatrixStack[0][0], &PosMatrixStack[0][0] + 32*16, &PosMatrixStackCache[0][0]);
-            std::copy(&VecMatrixStack[0][0], &VecMatrixStack[0][0] + 32*16, &VecMatrixStackCache[0][0]);
-            std::copy(TexMatrixStack, TexMatrixStack + 16, TexMatrixStackCache);
-            ProjMatrixStackPointerCache = ProjMatrixStackPointer;
-            PosMatrixStackPointerCache = PosMatrixStackPointer;
-            TexMatrixStackPointerCache = TexMatrixStackPointer;
-        }
         CmdFIFOCache.push_back(entry);
     }
 
@@ -2194,6 +2178,26 @@ void ExecuteCommand()
             PolygonPipeline = 0;
             VertexSlotCounter = 0;
             VertexSlotsFree = 1;
+            if (Report3DPipeline)
+            {
+                CmdFIFOReporter = CmdFIFOCache;
+                CmdFIFOCache.clear();
+                // cache the state
+                MatrixModeCache = MatrixMode;
+                TexParamCache = TexParam;
+                TexPaletteCache = TexPalette;
+                std::copy(ProjMatrix, ProjMatrix + 16, ProjMatrixCache);
+                std::copy(PosMatrix, PosMatrix + 16, PosMatrixCache);
+                std::copy(VecMatrix, VecMatrix + 16, VecMatrixCache);
+                std::copy(TexMatrix, TexMatrix + 16, TexMatrixCache);
+                std::copy(ProjMatrixStack, ProjMatrixStack + 16, ProjMatrixStackCache);
+                std::copy(&PosMatrixStack[0][0], &PosMatrixStack[0][0] + 32*16, &PosMatrixStackCache[0][0]);
+                std::copy(&VecMatrixStack[0][0], &VecMatrixStack[0][0] + 32*16, &VecMatrixStackCache[0][0]);
+                std::copy(TexMatrixStack, TexMatrixStack + 16, TexMatrixStackCache);
+                ProjMatrixStackPointerCache = ProjMatrixStackPointer;
+                PosMatrixStackPointerCache = PosMatrixStackPointer;
+                TexMatrixStackPointerCache = TexMatrixStackPointer;
+            }
             break;
 
         case 0x60: // viewport x1,y1,x2,y2
@@ -2635,11 +2639,6 @@ void VBlank()
 void VCount215()
 {
     CurrentRenderer->RenderFrame();
-    if (Report3DPipeline)
-    {
-        CmdFIFOReporter = CmdFIFOCache;
-        CmdFIFOCache.clear();
-    }
 }
 
 void SetRenderXPos(u16 xpos)

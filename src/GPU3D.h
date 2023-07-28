@@ -180,6 +180,7 @@ extern const u8 CmdNumParams[256];
 extern std::vector<CmdFIFOEntry> CmdFIFOReporter;
 // Matrix state for reporting to 3D previewer
 extern u32 TexParamCache;
+extern u32 TexPaletteCache;
 extern u32 MatrixModeCache;
 extern s32 ProjMatrixCache[16];
 extern s32 PosMatrixCache[16];
