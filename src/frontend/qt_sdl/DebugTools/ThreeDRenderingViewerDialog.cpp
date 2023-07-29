@@ -91,10 +91,11 @@ static u16* unpackRawTexcoords(u32 packedTexcoords)
 
 static u16* transformTexcoords(u16* rawTexCoords, s32* texMatrix)
 {
-    u16* texcoords = new u16[2];
-    texcoords[0] = (rawTexCoords[0]*texMatrix[0] + rawTexCoords[1]*texMatrix[4] + texMatrix[8] + texMatrix[12]) >> 12;;
-    texcoords[1] = (rawTexCoords[0]*rawTexCoords[1] + rawTexCoords[1]*texMatrix[5] + texMatrix[9] + texMatrix[13]) >> 12;
-    return texcoords;
+    // u16* texcoords = new u16[2];
+    // texcoords[0] = (rawTexCoords[0]*texMatrix[0] + rawTexCoords[1]*texMatrix[4] + texMatrix[8] + texMatrix[12]) >> 12;;
+    // texcoords[1] = (rawTexCoords[0]*rawTexCoords[1] + rawTexCoords[1]*texMatrix[5] + texMatrix[9] + texMatrix[13]) >> 12;
+    // return texcoords;
+    return rawTexCoords;
 }
 
 static TexParam* parseTexImageParam(u32 texparam)
@@ -379,7 +380,7 @@ const char* ThreeDRenderingViewerDialog::findMtxMode(int index)
     return "Projection";
 }
 
-void ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
+TexturePreviewer* ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
 {
     TexParam* texParam = nullptr;
     u32 basePalAddr = 0x2000;
@@ -418,10 +419,12 @@ void ThreeDRenderingViewerDialog::addVertexGroupTexturePreview(int index)
 
     if (texParam != nullptr && (basePalAddr < 0x2000 || texParam->Format == 7))
     {
-        TexturePreviewer* texturePreviewer = this->getTexturePreviewer(texParam, basePalAddr);
-        ui->previewLayout->addWidget(texturePreviewer);
-        previewWidgets.push_back(texturePreviewer);
+        TexturePreviewer* previewer = this->getTexturePreviewer(texParam, basePalAddr);
+        ui->previewLayout->addWidget(previewer);
+        previewWidgets.push_back(previewer);
+        return previewer;
     }
+    return nullptr;
 }
 
 void ThreeDRenderingViewerDialog::updatePipeline()
@@ -988,9 +991,11 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
 
     int index = std::stoi(selectedItems[0]->text(0).toStdString());
 
+    TexturePreviewer* texturePreviwer = nullptr;
+
     if (selectedItems[0]->parent() != NULL) // if we're not a top-level node, we're in a poly and should draw the tex to the screen
     {
-        addVertexGroupTexturePreview(index);
+        texturePreviwer = addVertexGroupTexturePreview(index);
     }
 
     switch (this->AggregatedFIFOCache[index]->Command)
@@ -1217,30 +1222,25 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
             if (this->AggregatedFIFOCache[i]->Command == 0x2A) // TEXIMAGE_PARAM
             {
                 texParam = parseTexImageParam(this->AggregatedFIFOCache[i]->Params[0]);
-                if (texParam->TransformationMode == 1)
-                {
-                    texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[index]);
-                }
                 break;
             }
         }
         if (texParam == nullptr)
         {
             texParam = parseTexImageParam(GPU3D::TexParamCache);
-            if (texParam->TransformationMode == 1)
-            {
-                texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[index]);
-            }
         }
 
-        float s = (texCoords[0] % (16 * (texParam->Width + 1))) / 16.f;
-        float t = (texCoords[1] % (16 * (texParam->Height + 1))) / 16.f;
+        float s = texCoords[0] / 16.f;
+        float t = texCoords[1] / 16.f;
         QLabel* texCoordLabel = new QLabel((std::to_string(s) + ", " + std::to_string(t)).c_str());
         ui->previewLayout->addWidget(texCoordLabel);
         previewWidgets.push_back(texCoordLabel);
 
-        // a little risky!
-        ((TexturePreviewer*)previewWidgets[0])->texCoord = new QPointF(s, t);
+        // should always be a texture previewer
+        if (texturePreviwer != nullptr)
+        {
+            texturePreviwer->texCoord = new QPointF(s, t);
+        }
         break;
     }
 
@@ -1400,7 +1400,7 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
 
     case 0x40: // BEGIN_VTXS
     {
-        addVertexGroupTexturePreview(index);
+        texturePreviwer = addVertexGroupTexturePreview(index);
         bool onePoly = this->AggregatedFIFOCache[index]->Params[0] >= 2;
         int numTexCoords = this->AggregatedFIFOCache[index]->Params[0] == 0 ? 3 : 4;
         
@@ -1419,24 +1419,16 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
                         if (this->AggregatedFIFOCache[j]->Command == 0x2A) // TEXIMAGE_PARAM
                         {
                             texParam = parseTexImageParam(this->AggregatedFIFOCache[j]->Params[0]);
-                            if (texParam->TransformationMode == 1)
-                            {
-                                texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[i]);
-                            }
                             break;
                         }
                     }
                     if (texParam == nullptr)
                     {
                         texParam = parseTexImageParam(GPU3D::TexParamCache);
-                        if (texParam->TransformationMode == 1)
-                        {
-                            texCoords = transformTexcoords(texCoords, AggregatedTextureMatrixCache[i]);
-                        }
                     }
 
-                    float s = (texCoords[0] % (16 * (texParam->Width + 1))) / 16.f;
-                    float t = (texCoords[1] % (16 * (texParam->Height + 1))) / 16.f;
+                    float s = (texCoords[0] /*% (16 * (texParam->Width + 1))*/) / 16.f;
+                    float t = (texCoords[1] /*% (16 * (texParam->Height + 1))*/) / 16.f;
                     texCoordsList->push_back(QPointF(qreal(s), qreal(t)));
                     j++;
                 }
@@ -1450,7 +1442,10 @@ void ThreeDRenderingViewerDialog::on_pipelineCommandsTree_itemSelectionChanged()
                 texPolygonList->push_back(*texPoly);
             }
         }
-        ((TexturePreviewer*)previewWidgets[0])->texPolys = texPolygonList;
+        if (texturePreviwer != nullptr)
+        {
+            texturePreviwer->texPolys = texPolygonList;
+        }
         break;
     }
     }

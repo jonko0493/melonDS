@@ -105,7 +105,7 @@ private:
     Ui::ThreeDRenderingViewerDialog* ui;
     void updatePipeline();
     TexturePreviewer* getTexturePreviewer(TexParam* texParam, u32 texPalAddr);
-    void addVertexGroupTexturePreview(int index);
+    TexturePreviewer* addVertexGroupTexturePreview(int index);
     const char* findMtxMode(int index);
 };
 
