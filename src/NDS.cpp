@@ -33,6 +33,7 @@
 #include "AREngine.h"
 #include "Platform.h"
 #include "FreeBIOS.h"
+#include "ShiftJIS.h"
 
 #ifdef JIT_ENABLED
 #include "ARMJIT.h"
@@ -1661,7 +1662,8 @@ void NocashPrint(u32 ncpu, u32 addr)
     }
 
     output[ptr] = '\0';
-    Log(LogLevel::Debug, "%s", output);
+    SetConsoleOutputCP( 65001 );
+    Log(LogLevel::Debug, "%s", sj2utf8(std::string(output)).c_str());
 }
 
 
