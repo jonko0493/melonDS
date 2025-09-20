@@ -1509,7 +1509,7 @@ void NDS::NocashPrint(u32 ncpu, u32 addr, bool appendNewline)
     char output[1024];
     int ptr = 0;
 
-    for (int i = 0; i < 120 && ptr < 1023; )
+    for (int i = 0; i < 512 && ptr < 1023; )
     {
         char ch = (this->*readfn)(addr++);
         i++;
@@ -1521,7 +1521,7 @@ void NDS::NocashPrint(u32 ncpu, u32 addr, bool appendNewline)
             {
                 char ch2 = (this->*readfn)(addr++);
                 i++;
-                if (i >= 120) break;
+                if (i >= 512) break;
                 if (ch2 == '%') break;
                 cmd[j++] = ch2;
             }
