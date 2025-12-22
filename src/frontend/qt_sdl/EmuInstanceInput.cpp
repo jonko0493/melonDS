@@ -24,7 +24,7 @@
 
 using namespace melonDS;
 
-const char* EmuInstance::buttonNames[12] =
+const char* EmuInstance::buttonNames[13] =
 {
     "A",
     "B",
@@ -37,7 +37,8 @@ const char* EmuInstance::buttonNames[12] =
     "R",
     "L",
     "X",
-    "Y"
+    "Y",
+    "Debug"
 };
 
 const char* EmuInstance::hotkeyNames[HK_MAX] =

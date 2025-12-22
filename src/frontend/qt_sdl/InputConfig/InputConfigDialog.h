@@ -26,7 +26,7 @@
 #include "Config.h"
 #include "EmuInstance.h"
 
-static constexpr int keypad_num = 12;
+static constexpr int keypad_num = 13;
 
 static constexpr std::initializer_list<int> hk_addons =
 {
@@ -134,7 +134,7 @@ private:
 
     EmuInstance* emuInstance;
 
-    int keypadKeyMap[12], keypadJoyMap[12];
+    int keypadKeyMap[13], keypadJoyMap[13];
     int addonsKeyMap[hk_addons.size()], addonsJoyMap[hk_addons.size()];
     int hkGeneralKeyMap[hk_general.size()], hkGeneralJoyMap[hk_general.size()];
     int joystickID;
