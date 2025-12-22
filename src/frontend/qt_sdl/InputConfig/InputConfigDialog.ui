@@ -645,7 +645,7 @@
                 <item>
                  <widget class="QLabel" name="label_Debug">
                   <property name="text">
-                   <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;DEBUG&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                   <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Debug&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                   </property>
                   <property name="alignment">
                    <set>Qt::AlignCenter</set>
@@ -670,7 +670,7 @@
                    <string notr="true">min-width: 68px;</string>
                   </property>
                   <property name="text">
-                   <string>DEBUG</string>
+                   <string>Debug</string>
                   </property>
                  </widget>
                 </item>
@@ -2134,7 +2134,7 @@
                 <item>
                  <widget class="QLabel" name="label_Debug_2">
                   <property name="text">
-                   <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;DEBUG&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                   <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;Debug&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                   </property>
                   <property name="alignment">
                    <set>Qt::AlignCenter</set>
@@ -2159,7 +2159,7 @@
                    <string notr="true">min-width: 68px;</string>
                   </property>
                   <property name="text">
-                   <string>DEBUG</string>
+                   <string>Debug</string>
                   </property>
                  </widget>
                 </item>
