@@ -1637,7 +1637,7 @@ std::unique_ptr<CartCommon> ParseROM(std::unique_ptr<u8[]>&& romdata, u32 romlen
         Log(LogLevel::Warn, "ROM entry not found for gamecode %d\n", gamecode);
 
         romparams.GameCode = gamecode;
-        romparams.ROMSize = cartromsize;
+        romparams.ROMSize = romlen;
         if (homebrew)
             romparams.SaveMemType = 0; // no saveRAM for homebrew
         else
@@ -1656,6 +1656,8 @@ std::unique_ptr<CartCommon> ParseROM(std::unique_ptr<u8[]>&& romdata, u32 romlen
         cartid |= ((cartromsize >> 20) - 1) << 8;
     else
         cartid |= (0x100 - (cartromsize >> 28)) << 8;
+
+    cartromsize = romlen;
 
     if (romparams.SaveMemType >= 8 && romparams.SaveMemType <= 10)
         cartid |= 0x08000000; // NAND flag
